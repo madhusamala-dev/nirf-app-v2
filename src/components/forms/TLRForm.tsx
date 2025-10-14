@@ -21,6 +21,13 @@ interface ProgramIntake {
   total: number;
 }
 
+interface StudentEnrollment {
+  program: string;
+  maleStudents: number;
+  femaleStudents: number;
+  totalStudents: number;
+}
+
 const TLRForm: React.FC = () => {
   const { scores, updateTLRData } = useData();
   const [formData, setFormData] = useState<TLRScores>(scores.tlr);
@@ -29,6 +36,9 @@ const TLRForm: React.FC = () => {
   // State for program selection and intake data
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>([]);
+  
+  // State for student enrollment data
+  const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>([]);
 
   const programOptions = [
     'UG (3 Years)',
@@ -47,6 +57,11 @@ const TLRForm: React.FC = () => {
     return programIntakes.reduce((sum, program) => sum + program.total, 0);
   };
 
+  // Calculate total NE from student enrollments
+  const calculateTotalNE = (): number => {
+    return studentEnrollments.reduce((sum, enrollment) => sum + enrollment.totalStudents, 0);
+  };
+
   // Update NT when program intakes change
   useEffect(() => {
     const totalNT = calculateTotalNT();
@@ -54,6 +69,30 @@ const TLRForm: React.FC = () => {
       handleInputChange('nt', totalNT.toString());
     }
   }, [programIntakes]);
+
+  // Update NE when student enrollments change
+  useEffect(() => {
+    const totalNE = calculateTotalNE();
+    if (totalNE !== formData.ne) {
+      handleInputChange('ne', totalNE.toString());
+    }
+  }, [studentEnrollments]);
+
+  // Update student enrollments when selected programs change
+  useEffect(() => {
+    setStudentEnrollments(prev => {
+      const newEnrollments = selectedPrograms.map(program => {
+        const existing = prev.find(e => e.program === program);
+        return existing || {
+          program,
+          maleStudents: 0,
+          femaleStudents: 0,
+          totalStudents: 0
+        };
+      });
+      return newEnrollments;
+    });
+  }, [selectedPrograms]);
 
   // Calculate Student Strength using NIRF formula
   const calculateStudentStrength = (nt: number, ne: number, np: number): number => {
@@ -132,6 +171,18 @@ const TLRForm: React.FC = () => {
     }));
   };
 
+  const handleEnrollmentChange = (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setStudentEnrollments(prev => prev.map(e => {
+      if (e.program === program) {
+        const updated = { ...e, [field]: numValue };
+        updated.totalStudents = updated.maleStudents + updated.femaleStudents;
+        return updated;
+      }
+      return e;
+    }));
+  };
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -147,7 +198,8 @@ const TLRForm: React.FC = () => {
   const n = formData.nt + formData.np;
   const facultyRatio = n > 0 ? formData.f / n : 0;
   const isRatioTooLow = facultyRatio > 0 && facultyRatio < 1/50;
-  const grandTotal = calculateTotalNT();
+  const grandTotalNT = calculateTotalNT();
+  const grandTotalNE = calculateTotalNE();
 
   return (
     <div className="space-y-6">
@@ -308,7 +360,7 @@ const TLRForm: React.FC = () => {
                             {programIntakes.reduce((sum, p) => sum + p['2021-22'], 0)}
                           </TableCell>
                           <TableCell className="text-center text-blue-600">
-                            {grandTotal}
+                            {grandTotalNT}
                           </TableCell>
                         </TableRow>
                       </TableBody>
@@ -324,7 +376,89 @@ const TLRForm: React.FC = () => {
                     Total Sanctioned Intake (NT):
                   </span>
                   <span className="text-lg font-bold text-blue-700">
-                    {grandTotal}
+                    {grandTotalNT}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total Actual Student Strength Section */}
+          <div className="space-y-4">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-4">Total Actual Student Strength (NE)</h4>
+              
+              {selectedPrograms.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Program</TableHead>
+                          <TableHead className="text-center">No of Male Students</TableHead>
+                          <TableHead className="text-center">No of Female Students</TableHead>
+                          <TableHead className="text-center">Total Students (NE)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {studentEnrollments.map((enrollment) => (
+                          <TableRow key={enrollment.program}>
+                            <TableCell className="font-medium">{enrollment.program}</TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={enrollment.maleStudents || ''}
+                                onChange={(e) => handleEnrollmentChange(enrollment.program, 'maleStudents', e.target.value)}
+                                className="w-24 text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={enrollment.femaleStudents || ''}
+                                onChange={(e) => handleEnrollmentChange(enrollment.program, 'femaleStudents', e.target.value)}
+                                className="w-24 text-center"
+                              />
+                            </TableCell>
+                            <TableCell className="text-center font-bold">
+                              {enrollment.totalStudents}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {/* Grand Total Row */}
+                        <TableRow className="bg-green-50 font-bold">
+                          <TableCell>Grand Total</TableCell>
+                          <TableCell className="text-center">
+                            {studentEnrollments.reduce((sum, e) => sum + e.maleStudents, 0)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {studentEnrollments.reduce((sum, e) => sum + e.femaleStudents, 0)}
+                          </TableCell>
+                          <TableCell className="text-center text-green-600">
+                            {grandTotalNE}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Please select programs from the Sanctioned Approved Intake section above</p>
+                  <p className="text-sm">The enrollment table will appear once you select program types</p>
+                </div>
+              )}
+
+              {/* Total NE Display */}
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-green-900">
+                    Total Actual Student Strength (NE):
+                  </span>
+                  <span className="text-lg font-bold text-green-700">
+                    {grandTotalNE}
                   </span>
                 </div>
               </div>
@@ -332,24 +466,6 @@ const TLRForm: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* NE Field */}
-            <div className="space-y-2">
-              <Label htmlFor="ne" className="text-sm font-medium">
-                Total Enrolled Students (NE)
-              </Label>
-              <Input
-                id="ne"
-                type="number"
-                placeholder="Enter total enrolled students"
-                value={formData.ne || ''}
-                onChange={(e) => handleInputChange('ne', e.target.value)}
-                min="0"
-              />
-              <p className="text-xs text-gray-500">
-                Total students enrolled in all UG and PG programs
-              </p>
-            </div>
-
             {/* NP Field */}
             <div className="space-y-2">
               <Label htmlFor="np" className="text-sm font-medium">
@@ -369,7 +485,7 @@ const TLRForm: React.FC = () => {
             </div>
 
             {/* Calculated SS */}
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2">
               <Label className="text-sm font-medium">
                 Student Strength Score (SS)
               </Label>
