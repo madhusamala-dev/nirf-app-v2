@@ -1,186 +1,206 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Calculator, Save } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  Save, 
+  CheckCircle, 
+  Eye,
+  TrendingUp,
+  AlertCircle
+} from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import type { PerceptionScores } from '../../context/DataContext';
+import { toast } from 'sonner';
 
 const PerceptionForm: React.FC = () => {
   const { scores, updatePerceptionData } = useData();
-  
-  // Safe access to Perception data with fallbacks
-  const perceptionData = scores?.perception || { pr: 0, total: 0 };
-  
-  const [formData, setFormData] = useState({
-    pr: perceptionData.pr || 0
-  });
+  const [formData, setFormData] = useState<PerceptionScores>(scores.perception);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
-  const handleInputChange = (field: string, value: string) => {
+  useEffect(() => {
+    setFormData(scores.perception);
+  }, [scores.perception]);
+
+  const handleInputChange = (field: keyof PerceptionScores, value: string) => {
     const numValue = parseFloat(value) || 0;
-    const updatedData = { ...formData, [field]: numValue };
-    setFormData(updatedData);
-    updatePerceptionData({ [field]: numValue });
-  };
-
-  const handleSave = () => {
-    updatePerceptionData(formData);
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const perceptionComponents = [
-    {
-      id: 'pr',
-      label: 'Perception Ranking (PR)',
-      description: 'External stakeholder perception and ranking',
-      maxScore: 100,
-      weight: '100%',
-      value: formData.pr,
-      placeholder: 'Enter perception score'
+    const newData = { ...formData, [field]: numValue };
+    
+    // Calculate total automatically (excluding the total field itself)
+    if (field !== 'total') {
+      newData.total = newData.pr;
     }
-  ];
+    
+    setFormData(newData);
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      const success = await updatePerceptionData(formData);
+      if (success) {
+        setHasChanges(false);
+        toast.success('Perception data saved successfully!');
+      } else {
+        toast.error('Failed to save data. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving perception data:', error);
+      toast.error('An error occurred while saving data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const calculateProgress = () => {
+    const maxScore = 100;
+    return Math.min((formData.total / maxScore) * 100, 100);
+  };
+
+  const getScoreStatus = () => {
+    const progress = calculateProgress();
+    if (progress >= 80) return { color: 'text-green-600', status: 'Excellent' };
+    if (progress >= 60) return { color: 'text-blue-600', status: 'Good' };
+    if (progress >= 40) return { color: 'text-yellow-600', status: 'Average' };
+    return { color: 'text-red-600', status: 'Needs Improvement' };
+  };
+
+  const scoreStatus = getScoreStatus();
+  const progress = calculateProgress();
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-            <Eye className="h-6 w-6" />
-            <span>Perception</span>
-          </h1>
-          <p className="text-gray-600 mt-1">Enter data for Perception parameters (Weight: 10% of total score)</p>
-        </div>
-        <div className="text-right">
-          <div className={`text-3xl font-bold ${getScoreColor(perceptionData.total)}`}>
-            {(perceptionData.total || 0).toFixed(2)}
+      {/* Header Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Eye className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Perception (PR)</CardTitle>
+                <CardDescription>
+                  Peer perception from employers and academic peers
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant="outline" className={scoreStatus.color}>
+              <TrendingUp className="h-4 w-4 mr-1" />
+              {scoreStatus.status}
+            </Badge>
           </div>
-          <div className="text-sm text-gray-500">Perception Score</div>
-        </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Overall Progress</span>
+              <span className="text-sm text-gray-600">{formData.total.toFixed(1)} / 100</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0</span>
+              <span>25</span>
+              <span>50</span>
+              <span>75</span>
+              <span>100</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Form Fields */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Peer Perception */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Eye className="h-5 w-5 text-purple-600" />
+              <span>Peer Perception (PR)</span>
+            </CardTitle>
+            <CardDescription>
+              Employers & Academic Peer Perception Score
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="pr">Peer Perception Score</Label>
+              <Input
+                id="pr"
+                type="number"
+                value={formData.pr}
+                onChange={(e) => handleInputChange('pr', e.target.value)}
+                placeholder="Enter PR score"
+                min="0"
+                max="100"
+                step="0.1"
+              />
+              <p className="text-xs text-gray-500 mt-1">Maximum: 100 points</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Overall Progress */}
-      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+      {/* Summary Card */}
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Calculator className="h-5 w-5 text-indigo-600" />
-            <span>Perception Progress</span>
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <span>Section Summary</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span>Overall Perception Score</span>
-              <span className="font-medium">{(perceptionData.total || 0).toFixed(2)}/100</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{formData.pr.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Peer Perception</div>
             </div>
-            <Progress value={perceptionData.total || 0} className="h-3" />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>Weight in Final Score: 10%</span>
-              <span>Contribution: {((perceptionData.total || 0) * 0.1).toFixed(2)} points</span>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-gray-900">{formData.total.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Total Score</div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t text-center">
+            <div className="text-sm text-gray-600">
+              Weighted Contribution to Overall Score: {(formData.total * 0.1).toFixed(1)}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Perception Components */}
-      <div className="grid gap-6">
-        {perceptionComponents.map((component) => (
-          <Card key={component.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg">{component.label}</CardTitle>
-                  <CardDescription>{component.description}</CardDescription>
-                </div>
-                <div className="text-right">
-                  <Badge variant="outline">Weight: {component.weight}</Badge>
-                  <div className="text-sm text-gray-500 mt-1">Max: {component.maxScore}</div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor={component.id}>Enter Value</Label>
-                    <Input
-                      id={component.id}
-                      type="number"
-                      placeholder={component.placeholder}
-                      value={component.value || ''}
-                      onChange={(e) => handleInputChange(component.id, e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Current Score</Label>
-                    <div className="flex items-center space-x-2">
-                      <div className={`text-2xl font-bold ${getScoreColor(component.value)}`}>
-                        {(component.value || 0).toFixed(1)}
-                      </div>
-                      <span className="text-gray-500">/ {component.maxScore}</span>
-                    </div>
-                    <Progress value={(component.value / component.maxScore) * 100} className="h-2" />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Save Section */}
+      {hasChanges && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            You have unsaved changes. Please save your data before leaving this section.
+          </AlertDescription>
+        </Alert>
+      )}
 
-      {/* Component Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Perception Component Breakdown</CardTitle>
-          <CardDescription>Detailed view of Perception ranking metrics</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4">
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className={`text-xl font-bold ${getScoreColor(formData.pr)}`}>
-                {(formData.pr || 0).toFixed(1)}
-              </div>
-              <div className="text-xs text-gray-600 mt-1">Perception Ranking</div>
-              <div className="text-xs text-gray-500">Max: 100</div>
-              <Progress 
-                value={(formData.pr / 100) * 100} 
-                className="h-1 mt-2" 
-              />
-            </div>
-          </div>
-          
-          <div className="mt-6 p-4 bg-indigo-50 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-indigo-900">Total Perception Score</div>
-                <div className="text-sm text-indigo-700">
-                  Based on external stakeholder surveys and rankings
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-indigo-900">
-                  {(perceptionData.total || 0).toFixed(2)}
-                </div>
-                <div className="text-sm text-indigo-700">out of 100</div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button onClick={handleSave} className="flex items-center space-x-2">
-          <Save className="h-4 w-4" />
-          <span>Save Perception Data</span>
+      <div className="flex justify-end space-x-4">
+        <Button
+          onClick={handleSave}
+          disabled={isLoading || !hasChanges}
+          className="min-w-[120px]"
+        >
+          {isLoading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Data
+            </>
+          )}
         </Button>
       </div>
     </div>

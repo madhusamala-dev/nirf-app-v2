@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Save, X, Clock, User, Mail } from 'lucide-react';
+import { X, Clock, User, Mail } from 'lucide-react';
 import type { Submission } from '../../context/DataContext';
 import { useData } from '../../context/DataContext';
 import ReviewSection from './ReviewSection';
@@ -16,50 +16,39 @@ interface ReviewModalProps {
 }
 
 const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }) => {
-  const { adminUpdateSection, saveSubmissionChanges } = useData();
+  const { submissions, adminUpdateSection } = useData();
   const [activeTab, setActiveTab] = useState('tlr');
-  const [hasChanges, setHasChanges] = useState(false);
+
+  // Get the latest submission data from the submissions array
+  const currentSubmission = submissions.find(sub => sub.id === submission.id) || submission;
 
   const handleSectionUpdate = (sectionName: keyof Submission['sections'], data: any) => {
+    console.log('ReviewModal handleSectionUpdate called:', sectionName, data);
+    
+    // Call the context function to update the submission
     adminUpdateSection(sectionName, data, 'admin@example.com');
-    setHasChanges(true);
-  };
-
-  const handleSaveAll = () => {
-    saveSubmissionChanges();
-    setHasChanges(false);
-    alert('All changes saved successfully!');
-  };
-
-  const handleClose = () => {
-    if (hasChanges) {
-      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
-        onClose();
-        setHasChanges(false);
-      }
-    } else {
-      onClose();
-    }
   };
 
   const sections = [
     { id: 'tlr', label: 'TLR', title: 'Teaching, Learning & Resources', maxScore: 100 },
     { id: 'research', label: 'Research', title: 'Research & Professional Practice', maxScore: 100 },
     { id: 'graduation', label: 'Graduation', title: 'Graduation Outcomes', maxScore: 100 },
-    { id: 'outreach', label: 'Outreach', title: 'Outreach & Inclusivity', maxScore: 100 }
+    { id: 'outreach', label: 'Outreach', title: 'Outreach & Inclusivity', maxScore: 100 },
+    { id: 'perception', label: 'Perception', title: 'Perception (PR)', maxScore: 100 }
   ];
 
-  // Safe access to scores with fallbacks
+  // Safe access to scores with fallbacks - use currentSubmission for latest data
   const safeScores = {
-    tlr: submission.scores?.tlr || { total: 0 },
-    research: submission.scores?.research || { total: 0 },
-    graduation: submission.scores?.graduation || { total: 0 },
-    outreach: submission.scores?.outreach || { total: 0 },
-    overall: submission.scores?.overall || 0
+    tlr: currentSubmission.scores?.tlr || { total: 0 },
+    research: currentSubmission.scores?.research || { total: 0 },
+    graduation: currentSubmission.scores?.graduation || { total: 0 },
+    outreach: currentSubmission.scores?.outreach || { total: 0 },
+    perception: currentSubmission.scores?.perception || { total: 0 },
+    overall: currentSubmission.scores?.overall || 0
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
@@ -68,29 +57,20 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
               <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
                 <div className="flex items-center space-x-1">
                   <User className="h-4 w-4" />
-                  <span>{submission.coordinatorName || 'Unknown'}</span>
+                  <span>{currentSubmission.coordinatorName || 'Unknown'}</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <Mail className="h-4 w-4" />
-                  <span>{submission.coordinatorEmail || 'No email'}</span>
+                  <span>{currentSubmission.coordinatorEmail || 'No email'}</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <Clock className="h-4 w-4" />
-                  <span>Submitted: {submission.submittedAt?.toLocaleDateString() || 'Unknown date'}</span>
+                  <span>Submitted: {currentSubmission.submittedAt?.toLocaleDateString() || 'Unknown date'}</span>
                 </div>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              {hasChanges && (
-                <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                  Unsaved Changes
-                </Badge>
-              )}
-              <Button onClick={handleSaveAll} disabled={!hasChanges}>
-                <Save className="h-4 w-4 mr-2" />
-                Save All Changes
-              </Button>
-              <Button variant="outline" onClick={handleClose}>
+              <Button variant="outline" onClick={onClose}>
                 <X className="h-4 w-4 mr-2" />
                 Close
               </Button>
@@ -104,7 +84,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
             <CardTitle className="text-lg">Overall Score Summary</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
                   {safeScores.tlr.total.toFixed(1)}
@@ -130,6 +110,12 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
                 <div className="text-sm text-gray-600">Outreach (10%)</div>
               </div>
               <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">
+                  {safeScores.perception.total.toFixed(1)}
+                </div>
+                <div className="text-sm text-gray-600">Perception (10%)</div>
+              </div>
+              <div className="text-center">
                 <div className="text-3xl font-bold text-gray-900">
                   {safeScores.overall.toFixed(1)}
                 </div>
@@ -141,7 +127,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
 
         {/* Section Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             {sections.map((section) => (
               <TabsTrigger key={section.id} value={section.id}>
                 {section.label}
@@ -150,7 +136,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
           </TabsList>
 
           {sections.map((section) => {
-            const sectionData = submission.sections?.[section.id as keyof Submission['sections']];
+            const sectionData = currentSubmission.sections?.[section.id as keyof Submission['sections']];
             
             // If section data doesn't exist, create a default one
             if (!sectionData) {
@@ -171,6 +157,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
             return (
               <TabsContent key={section.id} value={section.id}>
                 <ReviewSection
+                  key={`${section.id}-${currentSubmission.id}-${sectionData.lastModified?.getTime() || Date.now()}`}
                   title={section.title}
                   sectionData={sectionData}
                   onUpdate={(data) => handleSectionUpdate(section.id as keyof Submission['sections'], data)}
