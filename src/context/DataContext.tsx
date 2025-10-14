@@ -46,8 +46,10 @@ export interface PerceptionScores {
   total: number;
 }
 
+export type SectionData = TLRScores | ResearchScores | GraduationScores | OutreachScores | PerceptionScores;
+
 export interface FormSection {
-  data: any;
+  data: SectionData;
   coordinatorEmail: string;
   lastModified: Date;
   modifiedBy: 'coordinator' | 'admin';
@@ -98,7 +100,7 @@ interface DataContextType {
   editSubmission: (id: string) => void;
   saveSubmissionChanges: () => void;
   cancelEdit: () => void;
-  adminUpdateSection: (sectionName: keyof Submission['sections'], data: any, adminEmail: string) => void;
+  adminUpdateSection: (sectionName: keyof Submission['sections'], data: SectionData & { adminNotes?: string }, adminEmail: string) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -373,7 +375,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     );
   };
 
-  const adminUpdateSection = (sectionName: keyof Submission['sections'], data: any, adminEmail: string) => {
+  const adminUpdateSection = (sectionName: keyof Submission['sections'], data: SectionData & { adminNotes?: string }, adminEmail: string) => {
     console.log('DataContext adminUpdateSection called with:', { sectionName, data, adminEmail });
     
     // Extract admin notes from data
@@ -381,13 +383,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Special handling for TLR section to recalculate SS and FSR
     if (sectionName === 'tlr') {
-      if ('nt' in scoreData || 'ne' in scoreData || 'np' in scoreData) {
-        scoreData.ss = calculateStudentStrength(scoreData.nt || 0, scoreData.ne || 0, scoreData.np || 0);
+      const tlrData = scoreData as Partial<TLRScores>;
+      if ('nt' in tlrData || 'ne' in tlrData || 'np' in tlrData) {
+        (tlrData as TLRScores).ss = calculateStudentStrength(tlrData.nt || 0, tlrData.ne || 0, tlrData.np || 0);
       }
-      if ('f' in scoreData || 'nt' in scoreData || 'np' in scoreData) {
-        scoreData.fsr = calculateFSR(scoreData.f || 0, scoreData.nt || 0, scoreData.np || 0);
+      if ('f' in tlrData || 'nt' in tlrData || 'np' in tlrData) {
+        (tlrData as TLRScores).fsr = calculateFSR(tlrData.f || 0, tlrData.nt || 0, tlrData.np || 0);
       }
-      scoreData.total = scoreData.ss + scoreData.fsr + scoreData.fqe + scoreData.fru;
+      (tlrData as TLRScores).total = (tlrData as TLRScores).ss + (tlrData as TLRScores).fsr + (tlrData as TLRScores).fqe + (tlrData as TLRScores).fru;
     }
     
     setSubmissions(prev => {
@@ -398,7 +401,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ...submission.sections,
             [sectionName]: {
               ...submission.sections[sectionName],
-              data: { ...scoreData },
+              data: { ...scoreData } as SectionData,
               lastModified: new Date(),
               modifiedBy: 'admin' as const,
               adminNotes: adminNotes || submission.sections[sectionName]?.adminNotes

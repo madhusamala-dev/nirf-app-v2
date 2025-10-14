@@ -5,12 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Save, Edit, Clock, User } from 'lucide-react';
-import type { FormSection } from '../../context/DataContext';
+import type { FormSection, SectionData } from '../../context/DataContext';
 
 interface ReviewSectionProps {
   title: string;
   sectionData: FormSection;
-  onUpdate: (data: any) => void;
+  onUpdate: (data: SectionData & { adminNotes?: string }) => void;
   maxScore: number;
 }
 
@@ -21,7 +21,7 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
   maxScore 
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<any>({});
+  const [editData, setEditData] = useState<Record<string, number>>({});
   const [adminNotes, setAdminNotes] = useState('');
 
   // Safe access to section data with fallbacks
@@ -32,7 +32,7 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
   const existingNotes = sectionData?.adminNotes || '';
 
   useEffect(() => {
-    setEditData({ ...safeData });
+    setEditData({ ...safeData } as Record<string, number>);
     setAdminNotes(existingNotes);
   }, [sectionData]);
 
@@ -45,14 +45,14 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
       ...editData,
       total: calculateTotal(editData),
       adminNotes: adminNotes // Include admin notes in the saved data
-    };
+    } as SectionData & { adminNotes?: string };
     
     console.log('Final data being sent to onUpdate:', updatedData);
     onUpdate(updatedData);
     setIsEditing(false);
   };
 
-  const calculateTotal = (data: any) => {
+  const calculateTotal = (data: Record<string, number>): number => {
     if (!data || typeof data !== 'object') return 0;
     
     const values = Object.entries(data)
@@ -71,12 +71,12 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
   };
 
   const handleCancel = () => {
-    setEditData({ ...safeData });
+    setEditData({ ...safeData } as Record<string, number>);
     setAdminNotes(existingNotes);
     setIsEditing(false);
   };
 
-  const renderField = (key: string, value: any) => {
+  const renderField = (key: string, value: unknown) => {
     if (key === 'total' || key === 'adminNotes') return null; // Skip calculated fields
     
     const numValue = typeof value === 'number' ? value : 0;
@@ -105,7 +105,7 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
     );
   };
 
-  const currentTotal = calculateTotal(isEditing ? editData : safeData);
+  const currentTotal = calculateTotal(isEditing ? editData : safeData as Record<string, number>);
 
   return (
     <Card>

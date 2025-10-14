@@ -6,18 +6,54 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import type { TLRScores } from '../../context/DataContext';
+
+interface ProgramIntake {
+  program: string;
+  '2024-25': number;
+  '2023-24': number;
+  '2022-23': number;
+  '2021-22': number;
+  total: number;
+}
 
 const TLRForm: React.FC = () => {
   const { scores, updateTLRData } = useData();
   const [formData, setFormData] = useState<TLRScores>(scores.tlr);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // State for program selection and intake data
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
+  const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>([]);
+
+  const programOptions = [
+    'UG (3 Years)',
+    'UG (4 Years)', 
+    'UG (5 Years)',
+    'PG (2 Years)',
+    'PG (3 Years)'
+  ];
 
   useEffect(() => {
     setFormData(scores.tlr);
   }, [scores.tlr]);
+
+  // Calculate total NT from program intakes
+  const calculateTotalNT = (): number => {
+    return programIntakes.reduce((sum, program) => sum + program.total, 0);
+  };
+
+  // Update NT when program intakes change
+  useEffect(() => {
+    const totalNT = calculateTotalNT();
+    if (totalNT !== formData.nt) {
+      handleInputChange('nt', totalNT.toString());
+    }
+  }, [programIntakes]);
 
   // Calculate Student Strength using NIRF formula
   const calculateStudentStrength = (nt: number, ne: number, np: number): number => {
@@ -67,6 +103,35 @@ const TLRForm: React.FC = () => {
     setFormData(updatedData);
   };
 
+  const handleProgramSelection = (program: string, checked: boolean) => {
+    if (checked) {
+      setSelectedPrograms(prev => [...prev, program]);
+      setProgramIntakes(prev => [...prev, {
+        program,
+        '2024-25': 0,
+        '2023-24': 0,
+        '2022-23': 0,
+        '2021-22': 0,
+        total: 0
+      }]);
+    } else {
+      setSelectedPrograms(prev => prev.filter(p => p !== program));
+      setProgramIntakes(prev => prev.filter(p => p.program !== program));
+    }
+  };
+
+  const handleIntakeChange = (program: string, year: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setProgramIntakes(prev => prev.map(p => {
+      if (p.program === program) {
+        const updated = { ...p, [year]: numValue };
+        updated.total = updated['2024-25'] + updated['2023-24'] + updated['2022-23'] + updated['2021-22'];
+        return updated;
+      }
+      return p;
+    }));
+  };
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -82,6 +147,7 @@ const TLRForm: React.FC = () => {
   const n = formData.nt + formData.np;
   const facultyRatio = n > 0 ? formData.f / n : 0;
   const isRatioTooLow = facultyRatio > 0 && facultyRatio < 1/50;
+  const grandTotal = calculateTotalNT();
 
   return (
     <div className="space-y-6">
@@ -142,25 +208,130 @@ const TLRForm: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* NT Field */}
-            <div className="space-y-2">
-              <Label htmlFor="nt" className="text-sm font-medium">
-                Total Sanctioned Intake (NT)
-              </Label>
-              <Input
-                id="nt"
-                type="number"
-                placeholder="Enter total sanctioned intake"
-                value={formData.nt || ''}
-                onChange={(e) => handleInputChange('nt', e.target.value)}
-                min="0"
-              />
-              <p className="text-xs text-gray-500">
-                Combined intake capacity for all UG and PG programs
-              </p>
-            </div>
+          {/* Sanctioned Approved Intake Section */}
+          <div className="space-y-4">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-4">Sanctioned Approved Intake (NT)</h4>
+              
+              {/* Program Selection Checkboxes */}
+              <div className="space-y-3 mb-6">
+                <Label className="text-sm font-medium">Select Program Types:</Label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {programOptions.map((program) => (
+                    <div key={program} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={program}
+                        checked={selectedPrograms.includes(program)}
+                        onCheckedChange={(checked) => handleProgramSelection(program, checked as boolean)}
+                      />
+                      <Label htmlFor={program} className="text-sm">
+                        {program}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
+              {/* Intake Table */}
+              {selectedPrograms.length > 0 && (
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Academic Year</TableHead>
+                          <TableHead className="text-center">A.Y. (2024-25)</TableHead>
+                          <TableHead className="text-center">2023-24</TableHead>
+                          <TableHead className="text-center">2022-23</TableHead>
+                          <TableHead className="text-center">2021-22</TableHead>
+                          <TableHead className="text-center">Total Intake (NT)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {programIntakes.map((program) => (
+                          <TableRow key={program.program}>
+                            <TableCell className="font-medium">{program.program}</TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={program['2024-25'] || ''}
+                                onChange={(e) => handleIntakeChange(program.program, '2024-25', e.target.value)}
+                                className="w-20 text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={program['2023-24'] || ''}
+                                onChange={(e) => handleIntakeChange(program.program, '2023-24', e.target.value)}
+                                className="w-20 text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={program['2022-23'] || ''}
+                                onChange={(e) => handleIntakeChange(program.program, '2022-23', e.target.value)}
+                                className="w-20 text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={program['2021-22'] || ''}
+                                onChange={(e) => handleIntakeChange(program.program, '2021-22', e.target.value)}
+                                className="w-20 text-center"
+                              />
+                            </TableCell>
+                            <TableCell className="text-center font-bold">
+                              {program.total}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {/* Grand Total Row */}
+                        <TableRow className="bg-blue-50 font-bold">
+                          <TableCell>Grand Total</TableCell>
+                          <TableCell className="text-center">
+                            {programIntakes.reduce((sum, p) => sum + p['2024-25'], 0)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {programIntakes.reduce((sum, p) => sum + p['2023-24'], 0)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {programIntakes.reduce((sum, p) => sum + p['2022-23'], 0)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {programIntakes.reduce((sum, p) => sum + p['2021-22'], 0)}
+                          </TableCell>
+                          <TableCell className="text-center text-blue-600">
+                            {grandTotal}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {/* Total NT Display */}
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-900">
+                    Total Sanctioned Intake (NT):
+                  </span>
+                  <span className="text-lg font-bold text-blue-700">
+                    {grandTotal}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* NE Field */}
             <div className="space-y-2">
               <Label htmlFor="ne" className="text-sm font-medium">
@@ -198,7 +369,7 @@ const TLRForm: React.FC = () => {
             </div>
 
             {/* Calculated SS */}
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label className="text-sm font-medium">
                 Student Strength Score (SS)
               </Label>

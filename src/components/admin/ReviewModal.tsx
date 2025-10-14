@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { X, Clock, User, Mail } from 'lucide-react';
-import type { Submission } from '../../context/DataContext';
+import type { Submission, SectionData } from '../../context/DataContext';
 import { useData } from '../../context/DataContext';
 import ReviewSection from './ReviewSection';
 
@@ -22,7 +22,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ submission, isOpen, onClose }
   // Get the latest submission data from the submissions array
   const currentSubmission = submissions.find(sub => sub.id === submission.id) || submission;
 
-  const handleSectionUpdate = (sectionName: keyof Submission['sections'], data: any) => {
+  const handleSectionUpdate = (sectionName: keyof Submission['sections'], data: SectionData & { adminNotes?: string }) => {
     console.log('ReviewModal handleSectionUpdate called:', sectionName, data);
     
     // Call the context function to update the submission
