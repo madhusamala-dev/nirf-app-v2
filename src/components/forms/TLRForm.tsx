@@ -201,8 +201,9 @@ const TLRForm: React.FC = () => {
   const grandTotalNT = calculateTotalNT();
   const grandTotalNE = calculateTotalNE();
 
-  // Calculate weighted scores for Student Strength section (30% of total TLR)
-  const ssWeightedScore = (formData.ss / 20) * 30; // SS out of 20, weighted to 30%
+  // Calculate weighted score for Student Strength (30% of SS score)
+  const ssWeightedScore = formData.ss * 0.30; // 30% of the SS score
+  const maxWeightedScore = 20 * 0.30; // Maximum possible weighted score (30% of 20)
 
   return (
     <div className="space-y-6">
@@ -238,7 +239,8 @@ const TLRForm: React.FC = () => {
           <CardTitle className="flex items-center space-x-2">
             <Users className="h-5 w-5 text-blue-600" />
             <span>Student Strength (SS)</span>
-            <Badge variant="secondary">20 Marks (30% Weight)</Badge>
+            <Badge variant="secondary">20 Marks</Badge>
+            <Badge variant="outline">30% Weightage</Badge>
           </CardTitle>
           <CardDescription>
             Calculate student strength using NIRF formula: SS = f(NT, NE) × 15 + f(NP) × 5
@@ -468,7 +470,7 @@ const TLRForm: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* NP Field */}
             <div className="space-y-2">
               <Label htmlFor="np" className="text-sm font-medium">
@@ -490,36 +492,40 @@ const TLRForm: React.FC = () => {
             {/* Calculated SS */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                Student Strength Score (SS) - 30% Weightage
+                Student Strength Score (SS)
               </Label>
-              <div className="space-y-3">
-                {/* Raw Score Display */}
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <div className="flex items-center space-x-2">
-                      <Calculator className="h-4 w-4 text-blue-600" />
-                      <span className="text-lg font-bold text-blue-700">
-                        {formData.ss.toFixed(2)} / 20
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Weighted Score Display */}
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 p-3 bg-purple-50 border border-purple-200 rounded-md">
-                    <div className="flex items-center space-x-2">
-                      <Calculator className="h-4 w-4 text-purple-600" />
-                      <span className="text-sm font-medium text-purple-900">Weighted Score:</span>
-                      <span className="text-lg font-bold text-purple-700">
-                        {ssWeightedScore.toFixed(2)} / 30
-                      </span>
-                    </div>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <Calculator className="h-4 w-4 text-blue-600" />
+                    <span className="text-lg font-bold text-blue-700">
+                      {formData.ss.toFixed(2)} / 20
+                    </span>
                   </div>
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Raw score automatically calculated using NIRF formula, weighted at 30% of total TLR
+                Automatically calculated using NIRF formula
+              </p>
+            </div>
+
+            {/* Weighted SS Score */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Weighted SS Score (30%)
+              </Label>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 p-3 bg-purple-50 border border-purple-200 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <Calculator className="h-4 w-4 text-purple-600" />
+                    <span className="text-lg font-bold text-purple-700">
+                      {ssWeightedScore.toFixed(2)} / {maxWeightedScore.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                {formData.ss.toFixed(2)} × 0.30 = {ssWeightedScore.toFixed(2)}
               </p>
             </div>
           </div>
