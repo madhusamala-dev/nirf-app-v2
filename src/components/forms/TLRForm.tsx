@@ -201,6 +201,9 @@ const TLRForm: React.FC = () => {
   const grandTotalNT = calculateTotalNT();
   const grandTotalNE = calculateTotalNE();
 
+  // Calculate weighted scores for Student Strength section (30% of total TLR)
+  const ssWeightedScore = (formData.ss / 20) * 30; // SS out of 20, weighted to 30%
+
   return (
     <div className="space-y-6">
       {/* Header Card */}
@@ -235,7 +238,7 @@ const TLRForm: React.FC = () => {
           <CardTitle className="flex items-center space-x-2">
             <Users className="h-5 w-5 text-blue-600" />
             <span>Student Strength (SS)</span>
-            <Badge variant="secondary">20 Marks</Badge>
+            <Badge variant="secondary">20 Marks (30% Weight)</Badge>
           </CardTitle>
           <CardDescription>
             Calculate student strength using NIRF formula: SS = f(NT, NE) × 15 + f(NP) × 5
@@ -487,20 +490,36 @@ const TLRForm: React.FC = () => {
             {/* Calculated SS */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                Student Strength Score (SS)
+                Student Strength Score (SS) - 30% Weightage
               </Label>
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <div className="flex items-center space-x-2">
-                    <Calculator className="h-4 w-4 text-blue-600" />
-                    <span className="text-lg font-bold text-blue-700">
-                      {formData.ss.toFixed(2)} / 20
-                    </span>
+              <div className="space-y-3">
+                {/* Raw Score Display */}
+                <div className="flex items-center space-x-2">
+                  <div className="flex-1 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center space-x-2">
+                      <Calculator className="h-4 w-4 text-blue-600" />
+                      <span className="text-lg font-bold text-blue-700">
+                        {formData.ss.toFixed(2)} / 20
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Weighted Score Display */}
+                <div className="flex items-center space-x-2">
+                  <div className="flex-1 p-3 bg-purple-50 border border-purple-200 rounded-md">
+                    <div className="flex items-center space-x-2">
+                      <Calculator className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-900">Weighted Score:</span>
+                      <span className="text-lg font-bold text-purple-700">
+                        {ssWeightedScore.toFixed(2)} / 30
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Automatically calculated using NIRF formula
+                Raw score automatically calculated using NIRF formula, weighted at 30% of total TLR
               </p>
             </div>
           </div>
