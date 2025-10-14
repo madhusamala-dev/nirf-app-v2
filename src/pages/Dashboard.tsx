@@ -112,9 +112,19 @@ const Dashboard: React.FC = () => {
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">NIRF Ranking Portal</h1>
-              <p className="text-sm text-gray-600">Welcome, {user.name} ({user.email})</p>
+            <div className="flex items-center space-x-4">
+              {/* College Logo */}
+              <div className="flex-shrink-0">
+                <img 
+                  src="/assets/college-logo.png" 
+                  alt="College Logo" 
+                  className="h-12 w-12 object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Indian Institute of Technology Delhi</h1>
+                <p className="text-sm text-gray-600">Welcome, {user.name} ({user.email})</p>
+              </div>
             </div>
             <Button variant="outline" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
