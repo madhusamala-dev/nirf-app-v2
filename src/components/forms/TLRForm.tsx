@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck } from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import FacultyTable from './FacultyTable';
 import type { TLRScores, TLRFormData } from '../../context/DataContext';
+import FacultyTable from './FacultyTable';
 
 interface ProgramIntake {
   program: string;
@@ -30,7 +30,7 @@ interface StudentEnrollment {
 }
 
 const TLRForm: React.FC = () => {
-  const { scores, tlrFormData, updateTLRFormData } = useData();
+  const { tlrFormData, updateTLRFormData } = useData();
   const [isLoading, setIsLoading] = useState(false);
   
   // Use the persistent form data from context
@@ -46,86 +46,36 @@ const TLRForm: React.FC = () => {
     'PG (3 Years)'
   ];
 
-  // Sync local state with context data on mount and context changes
-  useEffect(() => {
-    setSelectedPrograms(tlrFormData.selectedPrograms);
-    setProgramIntakes(tlrFormData.programIntakes);
-    setStudentEnrollments(tlrFormData.studentEnrollments);
-  }, [tlrFormData]);
-
   // Calculate total NT from program intakes
-  const calculateTotalNT = (): number => {
+  const calculateTotalNT = useCallback((): number => {
     return programIntakes.reduce((sum, program) => sum + program.total, 0);
-  };
-
-  // Calculate total NE from student enrollments
-  const calculateTotalNE = (): number => {
-    return studentEnrollments.reduce((sum, enrollment) => sum + enrollment.totalStudents, 0);
-  };
-
-  // Update NT when program intakes change
-  useEffect(() => {
-    const totalNT = calculateTotalNT();
-    if (totalNT !== tlrFormData.nt) {
-      handleInputChange('nt', totalNT.toString());
-    }
   }, [programIntakes]);
 
-  // Update NE when student enrollments change
-  useEffect(() => {
-    const totalNE = calculateTotalNE();
-    if (totalNE !== tlrFormData.ne) {
-      handleInputChange('ne', totalNE.toString());
-    }
+  // Calculate total NE from student enrollments
+  const calculateTotalNE = useCallback((): number => {
+    return studentEnrollments.reduce((sum, enrollment) => sum + enrollment.totalStudents, 0);
   }, [studentEnrollments]);
 
-  // Update student enrollments when selected programs change
-  useEffect(() => {
-    const newEnrollments = selectedPrograms.map(program => {
-      const existing = studentEnrollments.find(e => e.program === program);
-      return existing || {
-        program,
-        maleStudents: 0,
-        femaleStudents: 0,
-        totalStudents: 0
-      };
-    });
-    
-    if (JSON.stringify(newEnrollments) !== JSON.stringify(studentEnrollments)) {
-      setStudentEnrollments(newEnrollments);
-      updateTLRFormData({ studentEnrollments: newEnrollments });
-    }
-  }, [selectedPrograms]);
-
   // Calculate Student Strength using NIRF formula
-  const calculateStudentStrength = (nt: number, ne: number, np: number): number => {
-    // NIRF formula: SS = f(NT, NE) × 15 + f(NP) × 5
-    const fNTNE = nt > 0 ? Math.min(ne / nt, 1) : 0; // Enrollment ratio, capped at 1
-    const fNP = np > 0 ? Math.min(np / 100, 1) : 0; // Normalized doctoral enrollment
-    
+  const calculateStudentStrength = useCallback((nt: number, ne: number, np: number): number => {
+    const fNTNE = nt > 0 ? Math.min(ne / nt, 1) : 0;
+    const fNP = np > 0 ? Math.min(np / 100, 1) : 0;
     const ss = (fNTNE * 15) + (fNP * 5);
-    return Math.min(ss, 20); // Cap at 20 marks
-  };
+    return Math.min(ss, 20);
+  }, []);
 
   // Calculate Faculty-Student Ratio using NIRF formula
-  const calculateFSR = (f: number, nt: number, np: number): number => {
-    const n = nt + np; // Total students
-    
+  const calculateFSR = useCallback((f: number, nt: number, np: number): number => {
+    const n = nt + np;
     if (n === 0 || f === 0) return 0;
-    
-    const ratio = f / n; // Faculty to student ratio
-    
-    // If ratio is less than 1:50 (0.02), set FSR to zero
+    const ratio = f / n;
     if (ratio < 1/50) return 0;
-    
-    // Calculate FSR score - at 1:15 ratio, FSR should be maximum (30 marks)
-    const idealRatio = 1/15; // 0.0667
+    const idealRatio = 1/15;
     const fsrScore = 30 * Math.min(ratio / idealRatio, 1);
-    
-    return Math.min(fsrScore, 30); // Cap at 30 marks
-  };
+    return Math.min(fsrScore, 30);
+  }, []);
 
-  const handleInputChange = async (field: keyof TLRScores, value: string) => {
+  const handleInputChange = useCallback(async (field: keyof TLRScores, value: string) => {
     const numValue = parseFloat(value) || 0;
     const updatedData: Partial<TLRFormData> = { [field]: numValue };
     
@@ -153,13 +103,50 @@ const TLRForm: React.FC = () => {
     updatedData.total = ss + fsr + fqe + fru;
     
     await updateTLRFormData(updatedData);
-  };
+  }, [tlrFormData, calculateStudentStrength, calculateFSR, updateTLRFormData]);
 
-  const handleFacultyCountChange = async (count: number) => {
-    await handleInputChange('f', count.toString());
-  };
+  // Update NT when program intakes change - with proper dependency management
+  useEffect(() => {
+    const totalNT = calculateTotalNT();
+    if (totalNT !== tlrFormData.nt) {
+      handleInputChange('nt', totalNT.toString());
+    }
+  }, [calculateTotalNT]); // Remove tlrFormData.nt from dependencies to prevent loop
 
-  const handleProgramSelection = async (program: string, checked: boolean) => {
+  // Update NE when student enrollments change - with proper dependency management
+  useEffect(() => {
+    const totalNE = calculateTotalNE();
+    if (totalNE !== tlrFormData.ne) {
+      handleInputChange('ne', totalNE.toString());
+    }
+  }, [calculateTotalNE]); // Remove tlrFormData.ne from dependencies to prevent loop
+
+  // Sync local state with context data on mount only
+  useEffect(() => {
+    setSelectedPrograms(tlrFormData.selectedPrograms);
+    setProgramIntakes(tlrFormData.programIntakes);
+    setStudentEnrollments(tlrFormData.studentEnrollments);
+  }, []); // Empty dependency array - only run on mount
+
+  // Update student enrollments when selected programs change
+  useEffect(() => {
+    const newEnrollments = selectedPrograms.map(program => {
+      const existing = studentEnrollments.find(e => e.program === program);
+      return existing || {
+        program,
+        maleStudents: 0,
+        femaleStudents: 0,
+        totalStudents: 0
+      };
+    });
+    
+    if (JSON.stringify(newEnrollments) !== JSON.stringify(studentEnrollments)) {
+      setStudentEnrollments(newEnrollments);
+      updateTLRFormData({ studentEnrollments: newEnrollments });
+    }
+  }, [selectedPrograms]); // Only depend on selectedPrograms
+
+  const handleProgramSelection = useCallback(async (program: string, checked: boolean) => {
     let newSelectedPrograms: string[];
     let newProgramIntakes: ProgramIntake[];
     
@@ -185,9 +172,9 @@ const TLRForm: React.FC = () => {
       selectedPrograms: newSelectedPrograms,
       programIntakes: newProgramIntakes
     });
-  };
+  }, [selectedPrograms, programIntakes, updateTLRFormData]);
 
-  const handleIntakeChange = async (program: string, year: string, value: string) => {
+  const handleIntakeChange = useCallback(async (program: string, year: string, value: string) => {
     const numValue = parseFloat(value) || 0;
     const newProgramIntakes = programIntakes.map(p => {
       if (p.program === program) {
@@ -200,9 +187,9 @@ const TLRForm: React.FC = () => {
     
     setProgramIntakes(newProgramIntakes);
     await updateTLRFormData({ programIntakes: newProgramIntakes });
-  };
+  }, [programIntakes, updateTLRFormData]);
 
-  const handleEnrollmentChange = async (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
+  const handleEnrollmentChange = useCallback(async (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
     const numValue = parseFloat(value) || 0;
     const newStudentEnrollments = studentEnrollments.map(e => {
       if (e.program === program) {
@@ -215,19 +202,22 @@ const TLRForm: React.FC = () => {
     
     setStudentEnrollments(newStudentEnrollments);
     await updateTLRFormData({ studentEnrollments: newStudentEnrollments });
-  };
+  }, [studentEnrollments, updateTLRFormData]);
 
-  const handleSave = async () => {
+  const handleFacultyCountChange = useCallback(async (count: number) => {
+    await handleInputChange('f', count.toString());
+  }, [handleInputChange]);
+
+  const handleSave = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Data is already saved through updateTLRFormData calls
       console.log('TLR data saved successfully');
     } catch (error) {
       console.error('Error saving TLR data:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const progress = (tlrFormData.total / 100) * 100;
   const n = tlrFormData.nt + tlrFormData.np;
@@ -237,8 +227,8 @@ const TLRForm: React.FC = () => {
   const grandTotalNE = calculateTotalNE();
 
   // Calculate weighted score for Student Strength (30% of SS score)
-  const ssWeightedScore = tlrFormData.ss * 0.30; // 30% of the SS score
-  const maxWeightedScore = 20 * 0.30; // Maximum possible weighted score (30% of 20)
+  const ssWeightedScore = tlrFormData.ss * 0.30;
+  const maxWeightedScore = 20 * 0.30;
 
   return (
     <div className="space-y-6">
@@ -599,7 +589,7 @@ const TLRForm: React.FC = () => {
             </div>
           </div>
 
-          {/* Faculty Details Table */}
+          {/* Faculty Details Section */}
           <FacultyTable onFacultyCountChange={handleFacultyCountChange} />
 
           {/* Warning for low ratio */}
@@ -618,15 +608,16 @@ const TLRForm: React.FC = () => {
               <Label className="text-sm font-medium">
                 Full-time Regular Faculty (F)
               </Label>
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-md">
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+                <div className="flex items-center space-x-2">
+                  <UserCheck className="h-4 w-4 text-gray-600" />
                   <span className="text-lg font-bold text-gray-700">
                     {tlrFormData.f}
                   </span>
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Automatically counted from faculty table (currently working faculty)
+                Calculated from uploaded faculty data (Full-time, Currently working)
               </p>
             </div>
 
