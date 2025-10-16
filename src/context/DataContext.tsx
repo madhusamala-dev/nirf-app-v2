@@ -84,12 +84,37 @@ export interface Submission {
   };
 }
 
+// Additional interfaces for TLR form data persistence
+export interface ProgramIntake {
+  program: string;
+  '2024-25': number;
+  '2023-24': number;
+  '2022-23': number;
+  '2021-22': number;
+  total: number;
+}
+
+export interface StudentEnrollment {
+  program: string;
+  maleStudents: number;
+  femaleStudents: number;
+  totalStudents: number;
+}
+
+export interface TLRFormData {
+  selectedPrograms: string[];
+  programIntakes: ProgramIntake[];
+  studentEnrollments: StudentEnrollment[];
+}
+
 interface DataContextType {
   scores: Scores;
   submissions: Submission[];
   currentSubmission: Submission | null;
   isEditing: boolean;
+  tlrFormData: TLRFormData;
   updateTLRData: (data: Partial<TLRScores>) => Promise<boolean>;
+  updateTLRFormData: (data: Partial<TLRFormData>) => void;
   updateResearchData: (data: Partial<ResearchScores>) => Promise<boolean>;
   updateGraduationData: (data: Partial<GraduationScores>) => Promise<boolean>;
   updateOutreachData: (data: Partial<OutreachScores>) => Promise<boolean>;
@@ -105,19 +130,76 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [scores, setScores] = useState<Scores>({
-    tlr: { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 },
-    research: { pu: 0, qp: 0, iprf: 0, fppp: 0, total: 0 },
-    graduation: { gph: 0, gue: 0, gms: 0, grd: 0, total: 0 },
-    outreach: { rd: 0, wd: 0, escs: 0, pcs: 0, total: 0 },
-    perception: { pr: 0, total: 0 },
-    overall: 0
-  });
+// Local storage keys
+const STORAGE_KEYS = {
+  SCORES: 'nirf_scores',
+  TLR_FORM_DATA: 'nirf_tlr_form_data',
+  SUBMISSIONS: 'nirf_submissions'
+};
 
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+// Helper functions for localStorage
+const saveToLocalStorage = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
+
+const loadFromLocalStorage = (key: string, defaultValue: any) => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : defaultValue;
+  } catch (error) {
+    console.error('Error loading from localStorage:', error);
+    return defaultValue;
+  }
+};
+
+export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Initialize scores from localStorage or default values
+  const [scores, setScores] = useState<Scores>(() => 
+    loadFromLocalStorage(STORAGE_KEYS.SCORES, {
+      tlr: { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 },
+      research: { pu: 0, qp: 0, iprf: 0, fppp: 0, total: 0 },
+      graduation: { gph: 0, gue: 0, gms: 0, grd: 0, total: 0 },
+      outreach: { rd: 0, wd: 0, escs: 0, pcs: 0, total: 0 },
+      perception: { pr: 0, total: 0 },
+      overall: 0
+    })
+  );
+
+  // Initialize TLR form data from localStorage
+  const [tlrFormData, setTLRFormData] = useState<TLRFormData>(() =>
+    loadFromLocalStorage(STORAGE_KEYS.TLR_FORM_DATA, {
+      selectedPrograms: [],
+      programIntakes: [],
+      studentEnrollments: []
+    })
+  );
+
+  // Initialize submissions from localStorage
+  const [submissions, setSubmissions] = useState<Submission[]>(() =>
+    loadFromLocalStorage(STORAGE_KEYS.SUBMISSIONS, [])
+  );
+
   const [currentSubmission, setCurrentSubmission] = useState<Submission | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Save scores to localStorage whenever they change
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.SCORES, scores);
+  }, [scores]);
+
+  // Save TLR form data to localStorage whenever it changes
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.TLR_FORM_DATA, tlrFormData);
+  }, [tlrFormData]);
+
+  // Save submissions to localStorage whenever they change
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.SUBMISSIONS, submissions);
+  }, [submissions]);
 
   // Calculate Student Strength using NIRF formula
   const calculateStudentStrength = (nt: number, ne: number, np: number): number => {
@@ -196,6 +278,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Error updating TLR data:', error);
       return false;
     }
+  };
+
+  const updateTLRFormData = (data: Partial<TLRFormData>) => {
+    setTLRFormData(prev => ({ ...prev, ...data }));
   };
 
   const updateResearchData = async (data: Partial<ResearchScores>): Promise<boolean> => {
@@ -431,7 +517,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     submissions,
     currentSubmission,
     isEditing,
+    tlrFormData,
     updateTLRData,
+    updateTLRFormData,
     updateResearchData,
     updateGraduationData,
     updateOutreachData,

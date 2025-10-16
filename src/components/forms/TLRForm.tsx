@@ -10,35 +10,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck } from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import type { TLRScores } from '../../context/DataContext';
-
-interface ProgramIntake {
-  program: string;
-  '2024-25': number;
-  '2023-24': number;
-  '2022-23': number;
-  '2021-22': number;
-  total: number;
-}
-
-interface StudentEnrollment {
-  program: string;
-  maleStudents: number;
-  femaleStudents: number;
-  totalStudents: number;
-}
+import type { TLRScores, ProgramIntake, StudentEnrollment } from '../../context/DataContext';
 
 const TLRForm: React.FC = () => {
-  const { scores, updateTLRData } = useData();
+  const { scores, tlrFormData, updateTLRData, updateTLRFormData } = useData();
   const [formData, setFormData] = useState<TLRScores>(scores.tlr);
   const [isLoading, setIsLoading] = useState(false);
   
-  // State for program selection and intake data
-  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
-  const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>([]);
-  
-  // State for student enrollment data
-  const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>([]);
+  // State for program selection and intake data - now synced with context
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>(tlrFormData.selectedPrograms);
+  const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>(tlrFormData.programIntakes);
+  const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>(tlrFormData.studentEnrollments);
 
   const programOptions = [
     'UG (3 Years)',
@@ -48,9 +30,16 @@ const TLRForm: React.FC = () => {
     'PG (3 Years)'
   ];
 
+  // Sync with context data on mount and when context changes
   useEffect(() => {
     setFormData(scores.tlr);
   }, [scores.tlr]);
+
+  useEffect(() => {
+    setSelectedPrograms(tlrFormData.selectedPrograms);
+    setProgramIntakes(tlrFormData.programIntakes);
+    setStudentEnrollments(tlrFormData.studentEnrollments);
+  }, [tlrFormData]);
 
   // Calculate total NT from program intakes
   const calculateTotalNT = (): number => {
@@ -80,18 +69,25 @@ const TLRForm: React.FC = () => {
 
   // Update student enrollments when selected programs change
   useEffect(() => {
-    setStudentEnrollments(prev => {
-      const newEnrollments = selectedPrograms.map(program => {
-        const existing = prev.find(e => e.program === program);
-        return existing || {
-          program,
-          maleStudents: 0,
-          femaleStudents: 0,
-          totalStudents: 0
-        };
-      });
-      return newEnrollments;
+    const newEnrollments = selectedPrograms.map(program => {
+      const existing = studentEnrollments.find(e => e.program === program);
+      return existing || {
+        program,
+        maleStudents: 0,
+        femaleStudents: 0,
+        totalStudents: 0
+      };
     });
+    
+    if (JSON.stringify(newEnrollments) !== JSON.stringify(studentEnrollments)) {
+      setStudentEnrollments(newEnrollments);
+      // Update context immediately
+      updateTLRFormData({
+        selectedPrograms,
+        programIntakes,
+        studentEnrollments: newEnrollments
+      });
+    }
   }, [selectedPrograms]);
 
   // Calculate Student Strength using NIRF formula
@@ -143,50 +139,87 @@ const TLRForm: React.FC = () => {
   };
 
   const handleProgramSelection = (program: string, checked: boolean) => {
+    let newSelectedPrograms: string[];
+    let newProgramIntakes: ProgramIntake[];
+    
     if (checked) {
-      setSelectedPrograms(prev => [...prev, program]);
-      setProgramIntakes(prev => [...prev, {
+      newSelectedPrograms = [...selectedPrograms, program];
+      newProgramIntakes = [...programIntakes, {
         program,
         '2024-25': 0,
         '2023-24': 0,
         '2022-23': 0,
         '2021-22': 0,
         total: 0
-      }]);
+      }];
     } else {
-      setSelectedPrograms(prev => prev.filter(p => p !== program));
-      setProgramIntakes(prev => prev.filter(p => p.program !== program));
+      newSelectedPrograms = selectedPrograms.filter(p => p !== program);
+      newProgramIntakes = programIntakes.filter(p => p.program !== program);
     }
+    
+    setSelectedPrograms(newSelectedPrograms);
+    setProgramIntakes(newProgramIntakes);
+    
+    // Update context immediately
+    updateTLRFormData({
+      selectedPrograms: newSelectedPrograms,
+      programIntakes: newProgramIntakes,
+      studentEnrollments
+    });
   };
 
   const handleIntakeChange = (program: string, year: string, value: string) => {
     const numValue = parseFloat(value) || 0;
-    setProgramIntakes(prev => prev.map(p => {
+    const newProgramIntakes = programIntakes.map(p => {
       if (p.program === program) {
         const updated = { ...p, [year]: numValue };
         updated.total = updated['2024-25'] + updated['2023-24'] + updated['2022-23'] + updated['2021-22'];
         return updated;
       }
       return p;
-    }));
+    });
+    
+    setProgramIntakes(newProgramIntakes);
+    
+    // Update context immediately
+    updateTLRFormData({
+      selectedPrograms,
+      programIntakes: newProgramIntakes,
+      studentEnrollments
+    });
   };
 
   const handleEnrollmentChange = (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
     const numValue = parseFloat(value) || 0;
-    setStudentEnrollments(prev => prev.map(e => {
+    const newStudentEnrollments = studentEnrollments.map(e => {
       if (e.program === program) {
         const updated = { ...e, [field]: numValue };
         updated.totalStudents = updated.maleStudents + updated.femaleStudents;
         return updated;
       }
       return e;
-    }));
+    });
+    
+    setStudentEnrollments(newStudentEnrollments);
+    
+    // Update context immediately
+    updateTLRFormData({
+      selectedPrograms,
+      programIntakes,
+      studentEnrollments: newStudentEnrollments
+    });
   };
 
   const handleSave = async () => {
     setIsLoading(true);
     try {
       await updateTLRData(formData);
+      // Also save the form structure data
+      updateTLRFormData({
+        selectedPrograms,
+        programIntakes,
+        studentEnrollments
+      });
     } catch (error) {
       console.error('Error saving TLR data:', error);
     } finally {
