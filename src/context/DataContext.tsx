@@ -65,6 +65,25 @@ export interface Scores {
   overall: number;
 }
 
+// Extended TLR data to include program selections and intake data
+export interface TLRFormData extends TLRScores {
+  selectedPrograms: string[];
+  programIntakes: Array<{
+    program: string;
+    '2024-25': number;
+    '2023-24': number;
+    '2022-23': number;
+    '2021-22': number;
+    total: number;
+  }>;
+  studentEnrollments: Array<{
+    program: string;
+    maleStudents: number;
+    femaleStudents: number;
+    totalStudents: number;
+  }>;
+}
+
 export interface Submission {
   id: string;
   collegeName: string;
@@ -84,29 +103,6 @@ export interface Submission {
   };
 }
 
-// Additional interfaces for TLR form data persistence
-export interface ProgramIntake {
-  program: string;
-  '2024-25': number;
-  '2023-24': number;
-  '2022-23': number;
-  '2021-22': number;
-  total: number;
-}
-
-export interface StudentEnrollment {
-  program: string;
-  maleStudents: number;
-  femaleStudents: number;
-  totalStudents: number;
-}
-
-export interface TLRFormData {
-  selectedPrograms: string[];
-  programIntakes: ProgramIntake[];
-  studentEnrollments: StudentEnrollment[];
-}
-
 interface DataContextType {
   scores: Scores;
   submissions: Submission[];
@@ -114,7 +110,7 @@ interface DataContextType {
   isEditing: boolean;
   tlrFormData: TLRFormData;
   updateTLRData: (data: Partial<TLRScores>) => Promise<boolean>;
-  updateTLRFormData: (data: Partial<TLRFormData>) => void;
+  updateTLRFormData: (data: Partial<TLRFormData>) => Promise<boolean>;
   updateResearchData: (data: Partial<ResearchScores>) => Promise<boolean>;
   updateGraduationData: (data: Partial<GraduationScores>) => Promise<boolean>;
   updateOutreachData: (data: Partial<OutreachScores>) => Promise<boolean>;
@@ -137,68 +133,53 @@ const STORAGE_KEYS = {
   SUBMISSIONS: 'nirf_submissions'
 };
 
-// Helper functions for localStorage
-const saveToLocalStorage = (key: string, data: any) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (error) {
-    console.error('Error saving to localStorage:', error);
-  }
+// Default values
+const defaultTLRScores: TLRScores = { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 };
+const defaultTLRFormData: TLRFormData = {
+  ...defaultTLRScores,
+  selectedPrograms: [],
+  programIntakes: [],
+  studentEnrollments: []
 };
 
-const loadFromLocalStorage = (key: string, defaultValue: any) => {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (error) {
-    console.error('Error loading from localStorage:', error);
-    return defaultValue;
-  }
+const defaultScores: Scores = {
+  tlr: defaultTLRScores,
+  research: { pu: 0, qp: 0, iprf: 0, fppp: 0, total: 0 },
+  graduation: { gph: 0, gue: 0, gms: 0, grd: 0, total: 0 },
+  outreach: { rd: 0, wd: 0, escs: 0, pcs: 0, total: 0 },
+  perception: { pr: 0, total: 0 },
+  overall: 0
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize scores from localStorage or default values
-  const [scores, setScores] = useState<Scores>(() => 
-    loadFromLocalStorage(STORAGE_KEYS.SCORES, {
-      tlr: { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 },
-      research: { pu: 0, qp: 0, iprf: 0, fppp: 0, total: 0 },
-      graduation: { gph: 0, gue: 0, gms: 0, grd: 0, total: 0 },
-      outreach: { rd: 0, wd: 0, escs: 0, pcs: 0, total: 0 },
-      perception: { pr: 0, total: 0 },
-      overall: 0
-    })
-  );
+  // Load initial data from localStorage
+  const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch (error) {
+      console.error(`Error loading ${key} from localStorage:`, error);
+      return defaultValue;
+    }
+  };
 
-  // Initialize TLR form data from localStorage
-  const [tlrFormData, setTLRFormData] = useState<TLRFormData>(() =>
-    loadFromLocalStorage(STORAGE_KEYS.TLR_FORM_DATA, {
-      selectedPrograms: [],
-      programIntakes: [],
-      studentEnrollments: []
-    })
-  );
-
-  // Initialize submissions from localStorage
-  const [submissions, setSubmissions] = useState<Submission[]>(() =>
-    loadFromLocalStorage(STORAGE_KEYS.SUBMISSIONS, [])
-  );
-
+  const [scores, setScores] = useState<Scores>(() => loadFromStorage(STORAGE_KEYS.SCORES, defaultScores));
+  const [tlrFormData, setTLRFormData] = useState<TLRFormData>(() => loadFromStorage(STORAGE_KEYS.TLR_FORM_DATA, defaultTLRFormData));
+  const [submissions, setSubmissions] = useState<Submission[]>(() => loadFromStorage(STORAGE_KEYS.SUBMISSIONS, []));
   const [currentSubmission, setCurrentSubmission] = useState<Submission | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Save scores to localStorage whenever they change
+  // Save to localStorage whenever data changes
   useEffect(() => {
-    saveToLocalStorage(STORAGE_KEYS.SCORES, scores);
+    localStorage.setItem(STORAGE_KEYS.SCORES, JSON.stringify(scores));
   }, [scores]);
 
-  // Save TLR form data to localStorage whenever it changes
   useEffect(() => {
-    saveToLocalStorage(STORAGE_KEYS.TLR_FORM_DATA, tlrFormData);
+    localStorage.setItem(STORAGE_KEYS.TLR_FORM_DATA, JSON.stringify(tlrFormData));
   }, [tlrFormData]);
 
-  // Save submissions to localStorage whenever they change
   useEffect(() => {
-    saveToLocalStorage(STORAGE_KEYS.SUBMISSIONS, submissions);
+    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
   }, [submissions]);
 
   // Calculate Student Strength using NIRF formula
@@ -273,6 +254,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         return { ...prev, tlr: newTLR };
       });
+
+      // Also update the TLR form data
+      setTLRFormData(prev => ({
+        ...prev,
+        ...data,
+        ss: data.ss || calculateStudentStrength(data.nt || prev.nt, data.ne || prev.ne, data.np || prev.np),
+        fsr: data.fsr || calculateFSR(data.f || prev.f, data.nt || prev.nt, data.np || prev.np)
+      }));
+
       return true;
     } catch (error) {
       console.error('Error updating TLR data:', error);
@@ -280,8 +270,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const updateTLRFormData = (data: Partial<TLRFormData>) => {
-    setTLRFormData(prev => ({ ...prev, ...data }));
+  const updateTLRFormData = async (data: Partial<TLRFormData>): Promise<boolean> => {
+    try {
+      setTLRFormData(prev => {
+        const updated = { ...prev, ...data };
+        
+        // Recalculate SS and FSR if relevant fields changed
+        if ('nt' in data || 'ne' in data || 'np' in data) {
+          updated.ss = calculateStudentStrength(updated.nt, updated.ne, updated.np);
+        }
+        
+        if ('f' in data || 'nt' in data || 'np' in data) {
+          updated.fsr = calculateFSR(updated.f, updated.nt, updated.np);
+        }
+        
+        updated.total = updated.ss + updated.fsr + updated.fqe + updated.fru;
+        
+        return updated;
+      });
+
+      // Also update the main scores
+      const tlrScoreData: Partial<TLRScores> = {};
+      Object.keys(data).forEach(key => {
+        if (key in defaultTLRScores) {
+          const typedKey = key as keyof TLRScores;
+          const typedData = data as Partial<TLRFormData>;
+          tlrScoreData[typedKey] = typedData[typedKey];
+        }
+      });
+
+      if (Object.keys(tlrScoreData).length > 0) {
+        await updateTLRData(tlrScoreData);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error updating TLR form data:', error);
+      return false;
+    }
   };
 
   const updateResearchData = async (data: Partial<ResearchScores>): Promise<boolean> => {
@@ -441,14 +467,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCurrentSubmission(null);
     setIsEditing(false);
     // Reset scores to original state
-    setScores({
-      tlr: { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 },
-      research: { pu: 0, qp: 0, iprf: 0, fppp: 0, total: 0 },
-      graduation: { gph: 0, gue: 0, gms: 0, grd: 0, total: 0 },
-      outreach: { rd: 0, wd: 0, escs: 0, pcs: 0, total: 0 },
-      perception: { pr: 0, total: 0 },
-      overall: 0
-    });
+    setScores(defaultScores);
+    setTLRFormData(defaultTLRFormData);
   };
 
   const calculateOverallScore = (scores: Scores) => {
