@@ -10,14 +10,30 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck } from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import type { TLRScores, ProgramIntake, StudentEnrollment } from '../../context/DataContext';
+import FacultyTable from './FacultyTable';
+import type { TLRScores, TLRFormData } from '../../context/DataContext';
+
+interface ProgramIntake {
+  program: string;
+  '2024-25': number;
+  '2023-24': number;
+  '2022-23': number;
+  '2021-22': number;
+  total: number;
+}
+
+interface StudentEnrollment {
+  program: string;
+  maleStudents: number;
+  femaleStudents: number;
+  totalStudents: number;
+}
 
 const TLRForm: React.FC = () => {
-  const { scores, tlrFormData, updateTLRData, updateTLRFormData } = useData();
-  const [formData, setFormData] = useState<TLRScores>(scores.tlr);
+  const { scores, tlrFormData, updateTLRFormData } = useData();
   const [isLoading, setIsLoading] = useState(false);
   
-  // State for program selection and intake data - now synced with context
+  // Use the persistent form data from context
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>(tlrFormData.selectedPrograms);
   const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>(tlrFormData.programIntakes);
   const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>(tlrFormData.studentEnrollments);
@@ -30,11 +46,7 @@ const TLRForm: React.FC = () => {
     'PG (3 Years)'
   ];
 
-  // Sync with context data on mount and when context changes
-  useEffect(() => {
-    setFormData(scores.tlr);
-  }, [scores.tlr]);
-
+  // Sync local state with context data on mount and context changes
   useEffect(() => {
     setSelectedPrograms(tlrFormData.selectedPrograms);
     setProgramIntakes(tlrFormData.programIntakes);
@@ -54,7 +66,7 @@ const TLRForm: React.FC = () => {
   // Update NT when program intakes change
   useEffect(() => {
     const totalNT = calculateTotalNT();
-    if (totalNT !== formData.nt) {
+    if (totalNT !== tlrFormData.nt) {
       handleInputChange('nt', totalNT.toString());
     }
   }, [programIntakes]);
@@ -62,7 +74,7 @@ const TLRForm: React.FC = () => {
   // Update NE when student enrollments change
   useEffect(() => {
     const totalNE = calculateTotalNE();
-    if (totalNE !== formData.ne) {
+    if (totalNE !== tlrFormData.ne) {
       handleInputChange('ne', totalNE.toString());
     }
   }, [studentEnrollments]);
@@ -81,12 +93,7 @@ const TLRForm: React.FC = () => {
     
     if (JSON.stringify(newEnrollments) !== JSON.stringify(studentEnrollments)) {
       setStudentEnrollments(newEnrollments);
-      // Update context immediately
-      updateTLRFormData({
-        selectedPrograms,
-        programIntakes,
-        studentEnrollments: newEnrollments
-      });
+      updateTLRFormData({ studentEnrollments: newEnrollments });
     }
   }, [selectedPrograms]);
 
@@ -118,27 +125,41 @@ const TLRForm: React.FC = () => {
     return Math.min(fsrScore, 30); // Cap at 30 marks
   };
 
-  const handleInputChange = (field: keyof TLRScores, value: string) => {
+  const handleInputChange = async (field: keyof TLRScores, value: string) => {
     const numValue = parseFloat(value) || 0;
-    const updatedData = { ...formData, [field]: numValue };
+    const updatedData: Partial<TLRFormData> = { [field]: numValue };
     
     // Recalculate SS if NT, NE, or NP changed
     if (field === 'nt' || field === 'ne' || field === 'np') {
-      updatedData.ss = calculateStudentStrength(updatedData.nt, updatedData.ne, updatedData.np);
+      const nt = field === 'nt' ? numValue : tlrFormData.nt;
+      const ne = field === 'ne' ? numValue : tlrFormData.ne;
+      const np = field === 'np' ? numValue : tlrFormData.np;
+      updatedData.ss = calculateStudentStrength(nt, ne, np);
     }
     
     // Recalculate FSR if F, NT, or NP changed
     if (field === 'f' || field === 'nt' || field === 'np') {
-      updatedData.fsr = calculateFSR(updatedData.f, updatedData.nt, updatedData.np);
+      const f = field === 'f' ? numValue : tlrFormData.f;
+      const nt = field === 'nt' ? numValue : tlrFormData.nt;
+      const np = field === 'np' ? numValue : tlrFormData.np;
+      updatedData.fsr = calculateFSR(f, nt, np);
     }
     
     // Calculate total
-    updatedData.total = updatedData.ss + updatedData.fsr + updatedData.fqe + updatedData.fru;
+    const ss = updatedData.ss || tlrFormData.ss;
+    const fsr = updatedData.fsr || tlrFormData.fsr;
+    const fqe = field === 'fqe' ? numValue : tlrFormData.fqe;
+    const fru = field === 'fru' ? numValue : tlrFormData.fru;
+    updatedData.total = ss + fsr + fqe + fru;
     
-    setFormData(updatedData);
+    await updateTLRFormData(updatedData);
   };
 
-  const handleProgramSelection = (program: string, checked: boolean) => {
+  const handleFacultyCountChange = async (count: number) => {
+    await handleInputChange('f', count.toString());
+  };
+
+  const handleProgramSelection = async (program: string, checked: boolean) => {
     let newSelectedPrograms: string[];
     let newProgramIntakes: ProgramIntake[];
     
@@ -160,15 +181,13 @@ const TLRForm: React.FC = () => {
     setSelectedPrograms(newSelectedPrograms);
     setProgramIntakes(newProgramIntakes);
     
-    // Update context immediately
-    updateTLRFormData({
+    await updateTLRFormData({
       selectedPrograms: newSelectedPrograms,
-      programIntakes: newProgramIntakes,
-      studentEnrollments
+      programIntakes: newProgramIntakes
     });
   };
 
-  const handleIntakeChange = (program: string, year: string, value: string) => {
+  const handleIntakeChange = async (program: string, year: string, value: string) => {
     const numValue = parseFloat(value) || 0;
     const newProgramIntakes = programIntakes.map(p => {
       if (p.program === program) {
@@ -180,16 +199,10 @@ const TLRForm: React.FC = () => {
     });
     
     setProgramIntakes(newProgramIntakes);
-    
-    // Update context immediately
-    updateTLRFormData({
-      selectedPrograms,
-      programIntakes: newProgramIntakes,
-      studentEnrollments
-    });
+    await updateTLRFormData({ programIntakes: newProgramIntakes });
   };
 
-  const handleEnrollmentChange = (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
+  const handleEnrollmentChange = async (program: string, field: 'maleStudents' | 'femaleStudents', value: string) => {
     const numValue = parseFloat(value) || 0;
     const newStudentEnrollments = studentEnrollments.map(e => {
       if (e.program === program) {
@@ -201,25 +214,14 @@ const TLRForm: React.FC = () => {
     });
     
     setStudentEnrollments(newStudentEnrollments);
-    
-    // Update context immediately
-    updateTLRFormData({
-      selectedPrograms,
-      programIntakes,
-      studentEnrollments: newStudentEnrollments
-    });
+    await updateTLRFormData({ studentEnrollments: newStudentEnrollments });
   };
 
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      await updateTLRData(formData);
-      // Also save the form structure data
-      updateTLRFormData({
-        selectedPrograms,
-        programIntakes,
-        studentEnrollments
-      });
+      // Data is already saved through updateTLRFormData calls
+      console.log('TLR data saved successfully');
     } catch (error) {
       console.error('Error saving TLR data:', error);
     } finally {
@@ -227,15 +229,15 @@ const TLRForm: React.FC = () => {
     }
   };
 
-  const progress = (formData.total / 100) * 100;
-  const n = formData.nt + formData.np;
-  const facultyRatio = n > 0 ? formData.f / n : 0;
+  const progress = (tlrFormData.total / 100) * 100;
+  const n = tlrFormData.nt + tlrFormData.np;
+  const facultyRatio = n > 0 ? tlrFormData.f / n : 0;
   const isRatioTooLow = facultyRatio > 0 && facultyRatio < 1/50;
   const grandTotalNT = calculateTotalNT();
   const grandTotalNE = calculateTotalNE();
 
   // Calculate weighted score for Student Strength (30% of SS score)
-  const ssWeightedScore = formData.ss * 0.30; // 30% of the SS score
+  const ssWeightedScore = tlrFormData.ss * 0.30; // 30% of the SS score
   const maxWeightedScore = 20 * 0.30; // Maximum possible weighted score (30% of 20)
 
   return (
@@ -256,7 +258,7 @@ const TLRForm: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-medium">Total Score</span>
             <span className="text-2xl font-bold text-blue-600">
-              {formData.total.toFixed(1)} / 100
+              {tlrFormData.total.toFixed(1)} / 100
             </span>
           </div>
           <Progress value={progress} className="h-3" />
@@ -513,7 +515,7 @@ const TLRForm: React.FC = () => {
                 id="np"
                 type="number"
                 placeholder="Enter doctoral students count"
-                value={formData.np || ''}
+                value={tlrFormData.np || ''}
                 onChange={(e) => handleInputChange('np', e.target.value)}
                 min="0"
               />
@@ -532,7 +534,7 @@ const TLRForm: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <Calculator className="h-4 w-4 text-blue-600" />
                     <span className="text-lg font-bold text-blue-700">
-                      {formData.ss.toFixed(2)} / 20
+                      {tlrFormData.ss.toFixed(2)} / 20
                     </span>
                   </div>
                 </div>
@@ -558,7 +560,7 @@ const TLRForm: React.FC = () => {
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                {formData.ss.toFixed(2)} × 0.30 = {ssWeightedScore.toFixed(2)}
+                {tlrFormData.ss.toFixed(2)} × 0.30 = {ssWeightedScore.toFixed(2)}
               </p>
             </div>
           </div>
@@ -597,6 +599,9 @@ const TLRForm: React.FC = () => {
             </div>
           </div>
 
+          {/* Faculty Details Table */}
+          <FacultyTable onFacultyCountChange={handleFacultyCountChange} />
+
           {/* Warning for low ratio */}
           {isRatioTooLow && (
             <Alert variant="destructive">
@@ -608,21 +613,20 @@ const TLRForm: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Faculty Count Field */}
+            {/* Faculty Count Display */}
             <div className="space-y-2">
-              <Label htmlFor="f" className="text-sm font-medium">
+              <Label className="text-sm font-medium">
                 Full-time Regular Faculty (F)
               </Label>
-              <Input
-                id="f"
-                type="number"
-                placeholder="Enter faculty count"
-                value={formData.f || ''}
-                onChange={(e) => handleInputChange('f', e.target.value)}
-                min="0"
-              />
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                  <span className="text-lg font-bold text-gray-700">
+                    {tlrFormData.f}
+                  </span>
+                </div>
+              </div>
               <p className="text-xs text-gray-500">
-                Faculty with Ph.D./M.E./M.Tech. who taught in both semesters (2023-24)
+                Automatically counted from faculty table (currently working faculty)
               </p>
             </div>
 
@@ -636,13 +640,13 @@ const TLRForm: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <Calculator className="h-4 w-4 text-green-600" />
                     <span className="text-lg font-bold text-green-700">
-                      {formData.fsr.toFixed(2)} / 30
+                      {tlrFormData.fsr.toFixed(2)} / 30
                     </span>
                   </div>
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Current ratio: {n > 0 ? `1:${Math.round(n / Math.max(formData.f, 1))}` : 'N/A'}
+                Current ratio: {n > 0 ? `1:${Math.round(n / Math.max(tlrFormData.f, 1))}` : 'N/A'}
               </p>
             </div>
 
@@ -657,7 +661,7 @@ const TLRForm: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-gray-500">
-                {formData.nt.toLocaleString()} (intake) + {formData.np.toLocaleString()} (doctoral)
+                {tlrFormData.nt.toLocaleString()} (intake) + {tlrFormData.np.toLocaleString()} (doctoral)
               </p>
             </div>
 
@@ -700,7 +704,7 @@ const TLRForm: React.FC = () => {
                 id="fqe"
                 type="number"
                 placeholder="Enter FQE score"
-                value={formData.fqe || ''}
+                value={tlrFormData.fqe || ''}
                 onChange={(e) => handleInputChange('fqe', e.target.value)}
                 min="0"
                 max="25"
@@ -718,7 +722,7 @@ const TLRForm: React.FC = () => {
                 id="fru"
                 type="number"
                 placeholder="Enter FRU score"
-                value={formData.fru || ''}
+                value={tlrFormData.fru || ''}
                 onChange={(e) => handleInputChange('fru', e.target.value)}
                 min="0"
                 max="25"
@@ -739,35 +743,35 @@ const TLRForm: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="text-center p-3 bg-blue-50 rounded-lg">
               <div className="text-lg font-bold text-blue-600">
-                {formData.ss.toFixed(1)}
+                {tlrFormData.ss.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">Student Strength</div>
               <div className="text-xs text-gray-500">/ 20</div>
             </div>
             <div className="text-center p-3 bg-green-50 rounded-lg">
               <div className="text-lg font-bold text-green-600">
-                {formData.fsr.toFixed(1)}
+                {tlrFormData.fsr.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">FSR</div>
               <div className="text-xs text-gray-500">/ 30</div>
             </div>
             <div className="text-center p-3 bg-purple-50 rounded-lg">
               <div className="text-lg font-bold text-purple-600">
-                {formData.fqe.toFixed(1)}
+                {tlrFormData.fqe.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">FQE</div>
               <div className="text-xs text-gray-500">/ 25</div>
             </div>
             <div className="text-center p-3 bg-orange-50 rounded-lg">
               <div className="text-lg font-bold text-orange-600">
-                {formData.fru.toFixed(1)}
+                {tlrFormData.fru.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">FRU</div>
               <div className="text-xs text-gray-500">/ 25</div>
             </div>
             <div className="text-center p-3 bg-gray-100 rounded-lg border-2 border-gray-300">
               <div className="text-xl font-bold text-gray-900">
-                {formData.total.toFixed(1)}
+                {tlrFormData.total.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">Total</div>
               <div className="text-xs text-gray-500">/ 100</div>
