@@ -12,9 +12,13 @@ export interface TLRScores {
   fsr: number; // Faculty Student Ratio (calculated)
   
   // Faculty Qualification & Experience fields
+  phdFaculties: number; // No of Ph.D Faculties
+  exp0to8: number; // Faculties with 0 to 8 years experience
+  exp8to15: number; // Faculties with 8+ to 15 years experience
+  exp15plus: number; // Faculties with Experience >15 Years
   fqe: number; // Faculty Qualification & Experience (calculated)
   
-  // Other TLR fields
+  // Financial Resources
   fru: number; // Financial Resources and their Utilization
   total: number;
 }
@@ -100,11 +104,6 @@ export interface TLRFormData extends TLRScores {
     totalStudents: number;
   }>;
   facultyData: FacultyMember[];
-  // FQE specific fields
-  phdFaculties: number;
-  exp0to8: number;
-  exp8to15: number;
-  expOver15: number;
 }
 
 export interface Submission {
@@ -157,17 +156,17 @@ const STORAGE_KEYS = {
 };
 
 // Default values
-const defaultTLRScores: TLRScores = { nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, fqe: 0, fru: 0, total: 0 };
+const defaultTLRScores: TLRScores = { 
+  nt: 0, ne: 0, np: 0, ss: 0, f: 0, fsr: 0, 
+  phdFaculties: 0, exp0to8: 0, exp8to15: 0, exp15plus: 0, fqe: 0,
+  fru: 0, total: 0 
+};
 const defaultTLRFormData: TLRFormData = {
   ...defaultTLRScores,
   selectedPrograms: [],
   programIntakes: [],
   studentEnrollments: [],
-  facultyData: [],
-  phdFaculties: 0,
-  exp0to8: 0,
-  exp8to15: 0,
-  expOver15: 0
+  facultyData: []
 };
 
 const defaultScores: Scores = {
@@ -247,6 +246,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return Math.min(fsrScore, 30); // Cap at 30 marks
   };
 
+  // Calculate Faculty Qualification & Experience (FQE)
+  const calculateFQE = (phdFaculties: number, exp0to8: number, exp8to15: number, exp15plus: number, totalFaculty: number): number => {
+    if (totalFaculty === 0) return 0;
+    
+    // FRA: Percentage of faculties with Ph.D qualification
+    const fra = (phdFaculties / totalFaculty) * 100;
+    
+    // F1, F2, F3: Fractions with different experience levels
+    const f1 = exp0to8 / totalFaculty;
+    const f2 = exp8to15 / totalFaculty;
+    const f3 = exp15plus / totalFaculty;
+    
+    // FQ calculation
+    const fq = fra < 95 ? 10 * (fra / 95) : 10;
+    
+    // FE calculation
+    const fe = 3 * Math.min(3 * f1, 1) + 3 * Math.min(3 * f2, 1) + 4 * Math.min(3 * f3, 1);
+    
+    // FQE = FQ + FE (capped at 20)
+    return Math.min(fq + fe, 20);
+  };
+
   // Calculate overall score whenever individual scores change
   useEffect(() => {
     const overall = (
@@ -275,6 +296,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           newTLR.fsr = calculateFSR(newTLR.f, newTLR.nt, newTLR.np);
         }
         
+        // Recalculate FQE if faculty qualification fields changed
+        if ('phdFaculties' in data || 'exp0to8' in data || 'exp8to15' in data || 'exp15plus' in data || 'f' in data) {
+          newTLR.fqe = calculateFQE(newTLR.phdFaculties, newTLR.exp0to8, newTLR.exp8to15, newTLR.exp15plus, newTLR.f);
+        }
+        
         // Calculate total if not provided
         if (!data.total) {
           newTLR.total = newTLR.ss + newTLR.fsr + newTLR.fqe + newTLR.fru;
@@ -288,7 +314,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ...prev,
         ...data,
         ss: data.ss || calculateStudentStrength(data.nt || prev.nt, data.ne || prev.ne, data.np || prev.np),
-        fsr: data.fsr || calculateFSR(data.f || prev.f, data.nt || prev.nt, data.np || prev.np)
+        fsr: data.fsr || calculateFSR(data.f || prev.f, data.nt || prev.nt, data.np || prev.np),
+        fqe: data.fqe || calculateFQE(
+          data.phdFaculties || prev.phdFaculties, 
+          data.exp0to8 || prev.exp0to8, 
+          data.exp8to15 || prev.exp8to15, 
+          data.exp15plus || prev.exp15plus, 
+          data.f || prev.f
+        )
       }));
 
       return true;
@@ -312,6 +345,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           updated.fsr = calculateFSR(updated.f, updated.nt, updated.np);
         }
         
+        // Recalculate FQE if faculty qualification fields changed
+        if ('phdFaculties' in data || 'exp0to8' in data || 'exp8to15' in data || 'exp15plus' in data || 'f' in data) {
+          updated.fqe = calculateFQE(updated.phdFaculties, updated.exp0to8, updated.exp8to15, updated.exp15plus, updated.f);
+        }
+        
         updated.total = updated.ss + updated.fsr + updated.fqe + updated.fru;
         
         return updated;
@@ -322,8 +360,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       Object.keys(data).forEach(key => {
         if (key in defaultTLRScores) {
           const typedKey = key as keyof TLRScores;
-          const typedData = data as Partial<TLRFormData>;
-          tlrScoreData[typedKey] = typedData[typedKey];
+          const typedData = data as Record<string, unknown>;
+          (tlrScoreData as Record<string, unknown>)[typedKey] = typedData[typedKey];
         }
       });
 
@@ -515,7 +553,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Extract admin notes from data
     const { adminNotes, ...scoreData } = data;
     
-    // Special handling for TLR section to recalculate SS and FSR
+    // Special handling for TLR section to recalculate SS, FSR, and FQE
     if (sectionName === 'tlr') {
       const tlrData = scoreData as Partial<TLRScores>;
       if ('nt' in tlrData || 'ne' in tlrData || 'np' in tlrData) {
@@ -523,6 +561,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       if ('f' in tlrData || 'nt' in tlrData || 'np' in tlrData) {
         (tlrData as TLRScores).fsr = calculateFSR(tlrData.f || 0, tlrData.nt || 0, tlrData.np || 0);
+      }
+      if ('phdFaculties' in tlrData || 'exp0to8' in tlrData || 'exp8to15' in tlrData || 'exp15plus' in tlrData || 'f' in tlrData) {
+        (tlrData as TLRScores).fqe = calculateFQE(
+          tlrData.phdFaculties || 0, 
+          tlrData.exp0to8 || 0, 
+          tlrData.exp8to15 || 0, 
+          tlrData.exp15plus || 0, 
+          tlrData.f || 0
+        );
       }
       (tlrData as TLRScores).total = (tlrData as TLRScores).ss + (tlrData as TLRScores).fsr + (tlrData as TLRScores).fqe + (tlrData as TLRScores).fru;
     }
