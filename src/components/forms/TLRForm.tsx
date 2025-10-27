@@ -8,10 +8,10 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck } from 'lucide-react';
+import { BookOpen, Calculator, Users, GraduationCap, Save, Info, AlertTriangle, UserCheck, Award } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import type { TLRScores, TLRFormData } from '../../context/DataContext';
-import FacultyTable from './FacultyTable';
+import FacultyUpload from './FacultyUpload';
 
 interface ProgramIntake {
   program: string;
@@ -29,14 +29,29 @@ interface StudentEnrollment {
   totalStudents: number;
 }
 
+interface FacultyMember {
+  srno: number;
+  name: string;
+  age: number;
+  designation: string;
+  gender: string;
+  qualification: string;
+  experienceMonths: number;
+  currentlyWorking: string;
+  joiningDate: string;
+  leavingDate: string;
+  associationType: string;
+}
+
 const TLRForm: React.FC = () => {
-  const { tlrFormData, updateTLRFormData } = useData();
+  const { scores, tlrFormData, updateTLRFormData } = useData();
   const [isLoading, setIsLoading] = useState(false);
   
   // Use the persistent form data from context
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>(tlrFormData.selectedPrograms);
   const [programIntakes, setProgramIntakes] = useState<ProgramIntake[]>(tlrFormData.programIntakes);
   const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>(tlrFormData.studentEnrollments);
+  const [facultyData, setFacultyData] = useState<FacultyMember[]>(tlrFormData.facultyData || []);
 
   const programOptions = [
     'UG (3 Years)',
@@ -56,6 +71,14 @@ const TLRForm: React.FC = () => {
     return studentEnrollments.reduce((sum, enrollment) => sum + enrollment.totalStudents, 0);
   }, [studentEnrollments]);
 
+  // Calculate total faculty count from faculty data
+  const calculateTotalFaculty = useCallback((): number => {
+    return facultyData.filter(faculty => 
+      faculty.currentlyWorking === 'Yes' && 
+      faculty.associationType === 'Full-time'
+    ).length;
+  }, [facultyData]);
+
   // Calculate Student Strength using NIRF formula
   const calculateStudentStrength = useCallback((nt: number, ne: number, np: number): number => {
     const fNTNE = nt > 0 ? Math.min(ne / nt, 1) : 0;
@@ -73,6 +96,28 @@ const TLRForm: React.FC = () => {
     const idealRatio = 1/15;
     const fsrScore = 30 * Math.min(ratio / idealRatio, 1);
     return Math.min(fsrScore, 30);
+  }, []);
+
+  // Calculate Faculty Qualification & Experience (FQE)
+  const calculateFQE = useCallback((phdFaculties: number, exp0to8: number, exp8to15: number, exp15plus: number, totalFaculty: number): number => {
+    if (totalFaculty === 0) return 0;
+    
+    // FRA: Percentage of faculties with Ph.D qualification
+    const fra = (phdFaculties / totalFaculty) * 100;
+    
+    // F1, F2, F3: Fractions with different experience levels
+    const f1 = exp0to8 / totalFaculty;
+    const f2 = exp8to15 / totalFaculty;
+    const f3 = exp15plus / totalFaculty;
+    
+    // FQ calculation
+    const fq = fra < 95 ? 10 * (fra / 95) : 10;
+    
+    // FE calculation
+    const fe = 3 * Math.min(3 * f1, 1) + 3 * Math.min(3 * f2, 1) + 4 * Math.min(3 * f3, 1);
+    
+    // FQE = FQ + FE (capped at 20)
+    return Math.min(fq + fe, 20);
   }, []);
 
   const handleInputChange = useCallback(async (field: keyof TLRScores, value: string) => {
@@ -95,42 +140,61 @@ const TLRForm: React.FC = () => {
       updatedData.fsr = calculateFSR(f, nt, np);
     }
     
+    // Recalculate FQE if faculty qualification fields changed
+    if (field === 'phdFaculties' || field === 'exp0to8' || field === 'exp8to15' || field === 'exp15plus' || field === 'f') {
+      const phdFaculties = field === 'phdFaculties' ? numValue : tlrFormData.phdFaculties;
+      const exp0to8 = field === 'exp0to8' ? numValue : tlrFormData.exp0to8;
+      const exp8to15 = field === 'exp8to15' ? numValue : tlrFormData.exp8to15;
+      const exp15plus = field === 'exp15plus' ? numValue : tlrFormData.exp15plus;
+      const f = field === 'f' ? numValue : tlrFormData.f;
+      updatedData.fqe = calculateFQE(phdFaculties, exp0to8, exp8to15, exp15plus, f);
+    }
+    
     // Calculate total
     const ss = updatedData.ss || tlrFormData.ss;
     const fsr = updatedData.fsr || tlrFormData.fsr;
-    const fqe = field === 'fqe' ? numValue : tlrFormData.fqe;
+    const fqe = updatedData.fqe || tlrFormData.fqe;
     const fru = field === 'fru' ? numValue : tlrFormData.fru;
     updatedData.total = ss + fsr + fqe + fru;
     
     await updateTLRFormData(updatedData);
-  }, [tlrFormData, calculateStudentStrength, calculateFSR, updateTLRFormData]);
+  }, [tlrFormData, calculateStudentStrength, calculateFSR, calculateFQE, updateTLRFormData]);
 
   // Update NT when program intakes change - with proper dependency management
   useEffect(() => {
     const totalNT = calculateTotalNT();
-    if (totalNT !== tlrFormData.nt) {
+    if (totalNT !== tlrFormData.nt && programIntakes.length > 0) {
       handleInputChange('nt', totalNT.toString());
     }
-  }, [calculateTotalNT]); // Remove tlrFormData.nt from dependencies to prevent loop
+  }, [calculateTotalNT]); // Only depend on the memoized calculation function
 
   // Update NE when student enrollments change - with proper dependency management
   useEffect(() => {
     const totalNE = calculateTotalNE();
-    if (totalNE !== tlrFormData.ne) {
+    if (totalNE !== tlrFormData.ne && studentEnrollments.length > 0) {
       handleInputChange('ne', totalNE.toString());
     }
-  }, [calculateTotalNE]); // Remove tlrFormData.ne from dependencies to prevent loop
+  }, [calculateTotalNE]); // Only depend on the memoized calculation function
+
+  // Update faculty count when faculty data changes - with proper dependency management
+  useEffect(() => {
+    const totalFaculty = calculateTotalFaculty();
+    if (totalFaculty !== tlrFormData.f) {
+      handleInputChange('f', totalFaculty.toString());
+    }
+  }, [calculateTotalFaculty]); // Only depend on the memoized calculation function
 
   // Sync local state with context data on mount only
   useEffect(() => {
     setSelectedPrograms(tlrFormData.selectedPrograms);
     setProgramIntakes(tlrFormData.programIntakes);
     setStudentEnrollments(tlrFormData.studentEnrollments);
+    setFacultyData(tlrFormData.facultyData || []);
   }, []); // Empty dependency array - only run on mount
 
   // Update student enrollments when selected programs change
-  useEffect(() => {
-    const newEnrollments = selectedPrograms.map(program => {
+  const updateEnrollmentsForPrograms = useCallback(async (newSelectedPrograms: string[]) => {
+    const newEnrollments = newSelectedPrograms.map(program => {
       const existing = studentEnrollments.find(e => e.program === program);
       return existing || {
         program,
@@ -140,11 +204,9 @@ const TLRForm: React.FC = () => {
       };
     });
     
-    if (JSON.stringify(newEnrollments) !== JSON.stringify(studentEnrollments)) {
-      setStudentEnrollments(newEnrollments);
-      updateTLRFormData({ studentEnrollments: newEnrollments });
-    }
-  }, [selectedPrograms]); // Only depend on selectedPrograms
+    setStudentEnrollments(newEnrollments);
+    await updateTLRFormData({ studentEnrollments: newEnrollments });
+  }, [studentEnrollments, updateTLRFormData]);
 
   const handleProgramSelection = useCallback(async (program: string, checked: boolean) => {
     let newSelectedPrograms: string[];
@@ -172,7 +234,10 @@ const TLRForm: React.FC = () => {
       selectedPrograms: newSelectedPrograms,
       programIntakes: newProgramIntakes
     });
-  }, [selectedPrograms, programIntakes, updateTLRFormData]);
+
+    // Update enrollments for new program selection
+    await updateEnrollmentsForPrograms(newSelectedPrograms);
+  }, [selectedPrograms, programIntakes, updateTLRFormData, updateEnrollmentsForPrograms]);
 
   const handleIntakeChange = useCallback(async (program: string, year: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -204,9 +269,10 @@ const TLRForm: React.FC = () => {
     await updateTLRFormData({ studentEnrollments: newStudentEnrollments });
   }, [studentEnrollments, updateTLRFormData]);
 
-  const handleFacultyCountChange = useCallback(async (count: number) => {
-    await handleInputChange('f', count.toString());
-  }, [handleInputChange]);
+  const handleFacultyDataChange = useCallback(async (newFacultyData: FacultyMember[]) => {
+    setFacultyData(newFacultyData);
+    await updateTLRFormData({ facultyData: newFacultyData });
+  }, [updateTLRFormData]);
 
   const handleSave = useCallback(async () => {
     setIsLoading(true);
@@ -225,10 +291,15 @@ const TLRForm: React.FC = () => {
   const isRatioTooLow = facultyRatio > 0 && facultyRatio < 1/50;
   const grandTotalNT = calculateTotalNT();
   const grandTotalNE = calculateTotalNE();
+  const totalFaculty = calculateTotalFaculty();
 
   // Calculate weighted score for Student Strength (30% of SS score)
   const ssWeightedScore = tlrFormData.ss * 0.30;
   const maxWeightedScore = 20 * 0.30;
+
+  // Calculate weighted score for FQE (30% of FQE score)
+  const fqeWeightedScore = tlrFormData.fqe * 0.30;
+  const maxFQEWeightedScore = 20 * 0.30;
 
   return (
     <div className="space-y-6">
@@ -589,8 +660,11 @@ const TLRForm: React.FC = () => {
             </div>
           </div>
 
-          {/* Faculty Details Section */}
-          <FacultyTable onFacultyCountChange={handleFacultyCountChange} />
+          {/* Faculty Upload Section */}
+          <FacultyUpload 
+            onFacultyDataChange={handleFacultyDataChange}
+            initialData={facultyData}
+          />
 
           {/* Warning for low ratio */}
           {isRatioTooLow && (
@@ -612,7 +686,7 @@ const TLRForm: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   <UserCheck className="h-4 w-4 text-gray-600" />
                   <span className="text-lg font-bold text-gray-700">
-                    {tlrFormData.f}
+                    {totalFaculty}
                   </span>
                 </div>
               </div>
@@ -676,51 +750,214 @@ const TLRForm: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Other TLR Components */}
+      {/* Faculty Qualification & Experience Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Award className="h-5 w-5 text-orange-600" />
+            <span>Faculty Qualification & Experience (FQE)</span>
+            <Badge variant="secondary">20 Marks</Badge>
+            <Badge variant="outline">30% Weightage</Badge>
+          </CardTitle>
+          <CardDescription>
+            Calculate faculty qualification and experience using NIRF formula: FQE = FQ + FE
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Formula Info */}
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <div className="flex items-start space-x-2">
+              <Info className="h-5 w-5 text-orange-600 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-orange-900">NIRF Formula</h4>
+                <p className="text-sm text-orange-800 mt-1">
+                  FQE = FQ + FE (Maximum: 20 marks)
+                </p>
+                <ul className="text-xs text-orange-700 mt-2 space-y-1">
+                  <li>• FQ = 10 × (FRA/95) if FRA &lt; 95%, else FQ = 10</li>
+                  <li>• FE = 3×min(3×F1,1) + 3×min(3×F2,1) + 4×min(3×F3,1)</li>
+                  <li>• FRA: Percentage of Ph.D faculties, F1/F2/F3: Experience fractions</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Ph.D Faculties */}
+            <div className="space-y-2">
+              <Label htmlFor="phdFaculties" className="text-sm font-medium">
+                No of Ph.D Faculties
+              </Label>
+              <Input
+                id="phdFaculties"
+                type="number"
+                placeholder="Enter Ph.D faculties count"
+                value={tlrFormData.phdFaculties || ''}
+                onChange={(e) => handleInputChange('phdFaculties', e.target.value)}
+                min="0"
+              />
+              <p className="text-xs text-gray-500">
+                Faculty with Ph.D or equivalent qualification
+              </p>
+            </div>
+
+            {/* 0-8 Years Experience */}
+            <div className="space-y-2">
+              <Label htmlFor="exp0to8" className="text-sm font-medium">
+                Faculties with 0 to 8 years experience
+              </Label>
+              <Input
+                id="exp0to8"
+                type="number"
+                placeholder="Enter count"
+                value={tlrFormData.exp0to8 || ''}
+                onChange={(e) => handleInputChange('exp0to8', e.target.value)}
+                min="0"
+              />
+              <p className="text-xs text-gray-500">
+                Faculty with up to 8 years of experience
+              </p>
+            </div>
+
+            {/* 8-15 Years Experience */}
+            <div className="space-y-2">
+              <Label htmlFor="exp8to15" className="text-sm font-medium">
+                Faculties with 8+ to 15 years experience
+              </Label>
+              <Input
+                id="exp8to15"
+                type="number"
+                placeholder="Enter count"
+                value={tlrFormData.exp8to15 || ''}
+                onChange={(e) => handleInputChange('exp8to15', e.target.value)}
+                min="0"
+              />
+              <p className="text-xs text-gray-500">
+                Faculty with 8+ to 15 years of experience
+              </p>
+            </div>
+
+            {/* 15+ Years Experience */}
+            <div className="space-y-2">
+              <Label htmlFor="exp15plus" className="text-sm font-medium">
+                Faculties with Experience &gt;15 Years
+              </Label>
+              <Input
+                id="exp15plus"
+                type="number"
+                placeholder="Enter count"
+                value={tlrFormData.exp15plus || ''}
+                onChange={(e) => handleInputChange('exp15plus', e.target.value)}
+                min="0"
+              />
+              <p className="text-xs text-gray-500">
+                Faculty with more than 15 years of experience
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Calculated FQE */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Faculty Qualification & Experience Score (FQE)
+              </Label>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <Calculator className="h-4 w-4 text-orange-600" />
+                    <span className="text-lg font-bold text-orange-700">
+                      {tlrFormData.fqe.toFixed(2)} / 20
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Automatically calculated using NIRF formula
+              </p>
+            </div>
+
+            {/* Weighted FQE Score */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Weighted FQE Score (30%)
+              </Label>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 p-3 bg-purple-50 border border-purple-200 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <Calculator className="h-4 w-4 text-purple-600" />
+                    <span className="text-lg font-bold text-purple-700">
+                      {fqeWeightedScore.toFixed(2)} / {maxFQEWeightedScore.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                {tlrFormData.fqe.toFixed(2)} × 0.30 = {fqeWeightedScore.toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          {/* Faculty Statistics Display */}
+          {tlrFormData.f > 0 && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-3">Faculty Statistics</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-600">Ph.D Ratio (FRA):</span>
+                  <div className="font-bold text-orange-600">
+                    {((tlrFormData.phdFaculties / tlrFormData.f) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-600">0-8 Years (F1):</span>
+                  <div className="font-bold text-blue-600">
+                    {(tlrFormData.exp0to8 / tlrFormData.f).toFixed(3)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-600">8-15 Years (F2):</span>
+                  <div className="font-bold text-green-600">
+                    {(tlrFormData.exp8to15 / tlrFormData.f).toFixed(3)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-600">&gt;15 Years (F3):</span>
+                  <div className="font-bold text-purple-600">
+                    {(tlrFormData.exp15plus / tlrFormData.f).toFixed(3)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Financial Resources Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <GraduationCap className="h-5 w-5 text-purple-600" />
-            <span>Other TLR Components</span>
+            <span>Financial Resources Utilization (FRU)</span>
+            <Badge variant="secondary">25 Marks</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Faculty Qualification & Experience */}
-            <div className="space-y-2">
-              <Label htmlFor="fqe" className="text-sm font-medium">
-                Faculty Qualification & Experience (FQE)
-              </Label>
-              <Input
-                id="fqe"
-                type="number"
-                placeholder="Enter FQE score"
-                value={tlrFormData.fqe || ''}
-                onChange={(e) => handleInputChange('fqe', e.target.value)}
-                min="0"
-                max="25"
-                step="0.1"
-              />
-              <p className="text-xs text-gray-500">Maximum: 25 marks</p>
-            </div>
-
-            {/* Financial Resources */}
-            <div className="space-y-2">
-              <Label htmlFor="fru" className="text-sm font-medium">
-                Financial Resources Utilization (FRU)
-              </Label>
-              <Input
-                id="fru"
-                type="number"
-                placeholder="Enter FRU score"
-                value={tlrFormData.fru || ''}
-                onChange={(e) => handleInputChange('fru', e.target.value)}
-                min="0"
-                max="25"
-                step="0.1"
-              />
-              <p className="text-xs text-gray-500">Maximum: 25 marks</p>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="fru" className="text-sm font-medium">
+              Financial Resources Utilization (FRU)
+            </Label>
+            <Input
+              id="fru"
+              type="number"
+              placeholder="Enter FRU score"
+              value={tlrFormData.fru || ''}
+              onChange={(e) => handleInputChange('fru', e.target.value)}
+              min="0"
+              max="25"
+              step="0.1"
+            />
+            <p className="text-xs text-gray-500">Maximum: 25 marks</p>
           </div>
         </CardContent>
       </Card>
@@ -746,15 +983,15 @@ const TLRForm: React.FC = () => {
               <div className="text-xs text-gray-600">FSR</div>
               <div className="text-xs text-gray-500">/ 30</div>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-lg font-bold text-purple-600">
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <div className="text-lg font-bold text-orange-600">
                 {tlrFormData.fqe.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">FQE</div>
-              <div className="text-xs text-gray-500">/ 25</div>
+              <div className="text-xs text-gray-500">/ 20</div>
             </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg">
-              <div className="text-lg font-bold text-orange-600">
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
+              <div className="text-lg font-bold text-purple-600">
                 {tlrFormData.fru.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">FRU</div>
@@ -765,7 +1002,7 @@ const TLRForm: React.FC = () => {
                 {tlrFormData.total.toFixed(1)}
               </div>
               <div className="text-xs text-gray-600">Total</div>
-              <div className="text-xs text-gray-500">/ 100</div>
+              <div className="text-xs text-gray-500">/ 95</div>
             </div>
           </div>
 
